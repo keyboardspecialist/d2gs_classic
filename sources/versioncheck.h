@@ -6,5 +6,6 @@
 	otherwise, a non-zero checksum will be returned.
 */
 extern DWORD VersionCheck(void);
+extern BOOL VersionCheckHasExpansionData(void);
 
 #endif

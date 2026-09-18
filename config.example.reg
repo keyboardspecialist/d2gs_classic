@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\D2Server\D2GS]
+"D2CSIP"="127.0.0.1"
+"D2DBSIP"="127.0.0.1"
+"D2CSPort"=dword:000017e0
+"D2DBSPort"=dword:000017e1
+"MaxGames"=dword:00000064
+"EnableNTMode"=dword:00000001
+"AdminPassword"="change-me"
+"AdminPort"=dword:000022b8
+"MOTD"="Welcome to the realm"

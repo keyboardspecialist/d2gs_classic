@@ -7,7 +7,9 @@
 #include "d2ge.h"
 #include "eventlog.h"
 #include "callback.h"
+#include "classicadapter.h"
 #include "vars.h"
+#include "versioncheck.h"
 
 
 /* functions in d2server.dll, got by QueryInterface() */
@@ -22,6 +24,18 @@ D2GSSendClientChatMessageFunc	D2GSSendClientChatMessage;
 /* variables */
 static D2GSINFO					gD2GSInfo;
 static HANDLE					ghServerThread;
+static D2GSCALLBACKABI			gCallbackAbi;
+
+static DWORD __stdcall D2GSDiscardClientChatMessage(DWORD dwClientId,
+	DWORD dwType, DWORD dwColor, LPCSTR lpName, LPCSTR lpText)
+{
+	UNREFERENCED_PARAMETER(dwClientId);
+	UNREFERENCED_PARAMETER(dwType);
+	UNREFERENCED_PARAMETER(dwColor);
+	UNREFERENCED_PARAMETER(lpName);
+	UNREFERENCED_PARAMETER(lpText);
+	return FALSE;
+}
 
 
 /*********************************************************************
@@ -33,6 +47,16 @@ int D2GEStartup(void)
 	HANDLE		hEvent;
 	DWORD		dwThreadId;
 	DWORD		dwWait;
+
+	gCallbackAbi = D2GS_CALLBACK_ABI_109D;
+	if (!VersionCheckHasExpansionData()) {
+		if (d2gsconf.enablegepatch) {
+			D2GSEventLog("D2GEStartup",
+				"Disabling the incompatible 1.09d GE patch set for classic startup");
+			d2gsconf.enablegepatch = FALSE;
+		}
+		if (!ClassicAdapterApply(&gCallbackAbi)) return FALSE;
+	}
 
 	/* init GE thread */
 	if (!D2GEThreadInit()) {
@@ -58,6 +82,13 @@ int D2GEStartup(void)
 	}
 
 	CloseHandle(hEvent);
+	if (!bGERunning) {
+		D2GSEventLog("D2GEStartup", "Game engine initialization failed");
+		WaitForSingleObject(ghServerThread, D2GE_SHUT_TIMEOUT);
+		CloseHandle(ghServerThread);
+		ghServerThread = NULL;
+		return FALSE;
+	}
 
 	if (CleanupRoutineInsert(D2GECleanup, "Diablo II Game Engine")) {
 		return TRUE;
@@ -103,10 +134,15 @@ int D2GEThreadInit(void)
 	gD2GSInfo.szVersion				= D2GS_VERSION_STRING;
 	gD2GSInfo.dwLibVersion			= D2GS_LIBRARY_VERSION;
 	gD2GSInfo.bIsNT					= d2gsconf.enablentmode;
+	if (gCallbackAbi == D2GS_CALLBACK_ABI_100 && gD2GSInfo.bIsNT) {
+		gD2GSInfo.bIsNT = FALSE;
+		D2GSEventLog("D2GEThreadInit",
+			"Disabling NT network mode for classic 1.00 compatibility");
+	}
 	gD2GSInfo.bEnablePatch			= d2gsconf.enablegepatch;
 	gD2GSInfo.fpEventLog			= D2GEEventLog;
 	gD2GSInfo.fpErrorHandle			= D2GSErrorHandle;
-	gD2GSInfo.fpCallback			= EventCallbackTableInit();
+	gD2GSInfo.fpCallback			= EventCallbackTableInit(gCallbackAbi);
 	gD2GSInfo.bPreCache				= d2gsconf.enableprecachemode;
 	gD2GSInfo.dwIdleSleep			= d2gsconf.idlesleep;
 	gD2GSInfo.dwBusySleep			= d2gsconf.busysleep;
@@ -134,6 +170,11 @@ static BOOL D2GSGetInterface(void)
 	D2GSNewEmptyGame			= lpD2GSInterface->D2GSNewEmptyGame;
 	D2GSEndAllGames				= lpD2GSInterface->D2GSEndAllGames;
 	D2GSSendClientChatMessage	= lpD2GSInterface->D2GSSendClientChatMessage;
+	if (!VersionCheckHasExpansionData() || !D2GSSendClientChatMessage) {
+		D2GSEventLog("D2GSGetInterface",
+			"Client chat interface unavailable in classic mode; server messages disabled");
+		D2GSSendClientChatMessage = D2GSDiscardClientChatMessage;
+	}
 
 	return TRUE;
 
@@ -146,7 +187,26 @@ static BOOL D2GSGetInterface(void)
  *********************************************************************/
 static DWORD __stdcall D2GSErrorHandle(void)
 {
+	PVOID frames[16];
+	USHORT frameCount;
+	USHORT i;
+	MEMORY_BASIC_INFORMATION memoryInfo;
+	CHAR modulePath[MAX_PATH];
+	HMODULE module;
+
 	D2GSEventLog("D2GSErrorHandle", "Error occur, exiting...\n\n");
+	frameCount = CaptureStackBackTrace(0, ARRAYSIZE(frames), frames, NULL);
+	for (i = 0; i < frameCount; i++) {
+		module = NULL;
+		modulePath[0] = '\0';
+		if (VirtualQuery(frames[i], &memoryInfo, sizeof(memoryInfo)) == sizeof(memoryInfo)) {
+			module = (HMODULE)memoryInfo.AllocationBase;
+			GetModuleFileNameA(module, modulePath, ARRAYSIZE(modulePath));
+		}
+		D2GSEventLog("D2GSErrorHandle", "stack[%u]=%p %s+0x%08lX\n",
+			i, frames[i], modulePath[0] ? modulePath : "<unknown>",
+			module ? (DWORD)((BYTE *)frames[i] - (BYTE *)module) : 0);
+	}
 
 #ifdef DEBUG_ON_CONSOLE
 	printf("Press Any Key to Continue");
@@ -208,8 +268,9 @@ DWORD WINAPI D2GEThread(LPVOID lpParameter)
 		SetEvent(hEvent);
 	} else if (dwRetval==WAIT_OBJECT_0) {
 		D2GSEventLog("D2GEThread", "Game Server Thread Start Successfully");
-		SetEvent(hEvent);
+		ClassicAdapterTraceNetwork();
 		bGERunning = TRUE;
+		SetEvent(hEvent);
 	} else {
 		D2GSEventLog("D2GEThread", "Wait Server Thread Returned %d", dwRetval);
 		SetEvent(hEvent);

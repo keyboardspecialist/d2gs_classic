@@ -3,6 +3,12 @@
 
 #include "d2gelib/d2server.h"
 
-extern LPEVENTCALLBACKTABLE EventCallbackTableInit(void);
+typedef enum {
+	D2GS_CALLBACK_ABI_109D,
+	D2GS_CALLBACK_ABI_109B,
+	D2GS_CALLBACK_ABI_100
+} D2GSCALLBACKABI;
+
+extern LPEVENTCALLBACKTABLE EventCallbackTableInit(D2GSCALLBACKABI callbackAbi);
 
 #endif

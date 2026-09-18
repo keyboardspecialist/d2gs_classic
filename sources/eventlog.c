@@ -41,10 +41,7 @@ void D2GSEventLogCleanup(void)
 {
 	if (eventstrm) fclose(eventstrm);
 	if (gestrm) fclose(gestrm);
-
-#ifdef DEBUG
 	if (hexstrm) fclose(hexstrm);
-#endif
 
 	eventstrm = gestrm = NULL;
 
@@ -60,6 +57,9 @@ void D2GSEventLogCleanup(void)
 void D2GSEventLog(char const * module, char const * fmt, ...)
 {
 	va_list		args;
+#ifdef DEBUG_ON_CONSOLE
+	va_list		console_args;
+#endif
 	char		time_string[EVENT_TIME_MAXLEN];
 	SYSTEMTIME	st;
     
@@ -91,9 +91,13 @@ void D2GSEventLog(char const * module, char const * fmt, ...)
 	fprintf(stdout,"%s %s: ", time_string, module);
 #endif
 	va_start(args, fmt);
+#ifdef DEBUG_ON_CONSOLE
+	va_copy(console_args, args);
+#endif
 	vfprintf(eventstrm, fmt, args);
 #ifdef DEBUG_ON_CONSOLE
-	vfprintf(stdout, fmt, args);
+	vfprintf(stdout, fmt, console_args);
+	va_end(console_args);
 #endif
 	va_end(args);
 	fprintf(eventstrm, "\n");
@@ -113,6 +117,9 @@ void D2GSEventLog(char const * module, char const * fmt, ...)
 void D2GEEventLog(char const * module, char const * fmt, ...)
 {
 	va_list		args;
+#ifdef DEBUG_ON_CONSOLE
+	va_list		console_args;
+#endif
 	char		time_string[EVENT_TIME_MAXLEN];
 	SYSTEMTIME	st;
 
@@ -145,9 +152,13 @@ void D2GEEventLog(char const * module, char const * fmt, ...)
 	fprintf(stdout,"%s  (*)%s: ", time_string, module);
 #endif
 	va_start(args, fmt);
+#ifdef DEBUG_ON_CONSOLE
+	va_copy(console_args, args);
+#endif
 	vfprintf(gestrm, fmt, args);
 #ifdef DEBUG_ON_CONSOLE
-	vfprintf(stdout, fmt, args);
+	vfprintf(stdout, fmt, console_args);
+	va_end(console_args);
 #endif
 	va_end(args);
 	fprintf(gestrm, "\n");
@@ -167,19 +178,19 @@ void D2GEEventLog(char const * module, char const * fmt, ...)
 void LogAP(LPCSTR lpModule, LPCSTR lpFormat, va_list ap)
 {
 	SYSTEMTIME	st;
-	DWORD		len;
+	int		len;
 	char		msg[MAX_LINE_LEN];
-	char		tmp[MAX_LINE_LEN];
 
 	if (!d2gsconf.enablegemsg) return;
 	if (!lpModule || !lpFormat)  return;
+	if (!gestrm) return;
 	GetLocalTime(&st);
-	len = wsprintf(msg, "%02d/%02d %02d:%02d:%02d.%03d", st.wMonth, st.wDay,
+	len = snprintf(msg, sizeof(msg), "%02d/%02d %02d:%02d:%02d.%03d", st.wMonth, st.wDay,
 		st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
-	len += vsprintf(tmp, lpFormat, ap);
-	strcat(msg, tmp);
+	if (len < 0 || len >= (int)sizeof(msg)-1) return;
+	vsnprintf(msg+len, sizeof(msg)-len-1, lpFormat, ap);
+	msg[sizeof(msg)-2] = '\0';
 	strcat(msg, "\n");
-	len += strlen("\n");
 	fprintf(gestrm, "%s", msg);
 	fflush(gestrm);
 #ifdef DEBUG_ON_CONSOLE

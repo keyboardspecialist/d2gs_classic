@@ -49,7 +49,8 @@ static ADMINCOMMAND	admincmdtbl[] = {
 
 static HANDLE	hStopEvent;
 static HANDLE	hAdminThread;
-static long		uptime;
+static SOCKET	hAdminSocket = INVALID_SOCKET;
+static time_t	uptime;
 
 
 /*********************************************************************
@@ -79,9 +80,6 @@ int D2GSAdminInitialize(void)
 		CleanupRoutineForAdmin();
 		return FALSE;
 	}
-	CloseHandle(hAdminThread);
-	hAdminThread = NULL;
-
 	/* add to the cleanup routine list */
 	if (CleanupRoutineInsert(CleanupRoutineForAdmin, "Administrator Console")) {
 		return TRUE;
@@ -102,6 +100,11 @@ int CleanupRoutineForAdmin(void)
 {
 	if (hStopEvent) {
 		SetEvent(hStopEvent);
+		if (hAdminSocket != INVALID_SOCKET) {
+			shutdown(hAdminSocket, SD_BOTH);
+			closesocket(hAdminSocket);
+			hAdminSocket = INVALID_SOCKET;
+		}
 		if (hAdminThread) {
 			WaitForSingleObject(hAdminThread, INFINITE);
 			CloseHandle(hAdminThread);
@@ -124,7 +127,7 @@ int CleanupRoutineForAdmin(void)
  ************************************************************/
 DWORD WINAPI admin_service(LPVOID lpParam)
 {
-	unsigned int		mainsock, ns;
+	SOCKET			mainsock, ns;
 	struct sockaddr_in	server, client;
 	int					clen;
 	char				ipstr[16];
@@ -136,11 +139,12 @@ DWORD WINAPI admin_service(LPVOID lpParam)
 	DWORD				dwThreadId;
 
 	/* create our new socket for administraion */
-	if ((mainsock=socket(AF_INET,SOCK_STREAM,0))<0)	{
+	if ((mainsock=socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET)	{
 		D2GSEventLog("admin_service",
 			"failed create admin socket. code: %d", WSAGetLastError());
 		return -1;
 	}
+	hAdminSocket = mainsock;
 	val = 1;
 	clen = sizeof(val);
 	setsockopt(mainsock, SOL_SOCKET, SO_REUSEADDR, (char *)&val, clen);
@@ -150,14 +154,14 @@ DWORD WINAPI admin_service(LPVOID lpParam)
 	server.sin_port = d2gsconf.adminport;
 	if (bind(mainsock, (struct sockaddr *)&server, sizeof(server))<0) {
 		closesocket(mainsock);
-		mainsock = -1;
+		hAdminSocket = INVALID_SOCKET;
 		D2GSEventLog("admin_service",
 			"failed bind admin socket, port %u. code: %d", d2gsconf.adminport, WSAGetLastError());
 		return -1;
 	}
 	if (listen(mainsock,1)==-1) {
 		closesocket(mainsock);
-		mainsock = -1;
+		hAdminSocket = INVALID_SOCKET;
 		D2GSEventLog("admin_service",
 			"failed listen admin socket, port %u. code: %d", d2gsconf.adminport, WSAGetLastError());
 		return -1;
@@ -169,7 +173,8 @@ DWORD WINAPI admin_service(LPVOID lpParam)
 		memset(&client, 0, sizeof(client));
 		clen = sizeof(client);
 		ns = accept(mainsock, (struct sockaddr *)&client, &clen);
-		if (ns<0) {
+		if (ns == INVALID_SOCKET) {
+			if (admin_to_stop()) break;
 			D2GSEventLog("admin_service",
 				"failed accept for admin socket. code: %d", WSAGetLastError());
 			tv.tv_sec = 1;
@@ -197,8 +202,8 @@ DWORD WINAPI admin_service(LPVOID lpParam)
 		*/
 
 		/* It is ok now, create new thread to server it */
-		D2GSEventLog("admin_service", "New admin request from %s(%u)", ipstr, ns);
-		hThread = CreateThread(NULL, 0, admin_thread, &ns, 0, &dwThreadId);
+		D2GSEventLog("admin_service", "New admin request from %s(%Iu)", ipstr, (UINT_PTR)ns);
+		hThread = CreateThread(NULL, 0, admin_thread, (LPVOID)(UINT_PTR)ns, 0, &dwThreadId);
 		if (!hThread) {
 			SENDSTR(ns, "System error");
 			closesocket(ns);
@@ -207,6 +212,7 @@ DWORD WINAPI admin_service(LPVOID lpParam)
 		else
 			CloseHandle(hThread);
 	} /* End of while(1) */
+	return 0;
 
 } /* End of admin_service() */
 
@@ -216,17 +222,16 @@ DWORD WINAPI admin_service(LPVOID lpParam)
  * Purpose: administration service thread
  * Return: None
  ************************************************************/
-DWORD WINAPI admin_thread(LPVOID *lpParam)
+DWORD WINAPI admin_thread(LPVOID lpParam)
 {
-	unsigned int		ns;
+	SOCKET			ns;
 	unsigned char		buf[1024], recvbuf[2048];
 	unsigned char		cmd[4][256];
-	int					count, i;
+	int					count, i = 0;
 
 	/* get the socket description */
 	if (!lpParam) return -1;
-	else
-		ns = *((int *)lpParam);
+	ns = (SOCKET)(UINT_PTR)lpParam;
 
 	/* telnet option specifications */
 	sprintf(buf, "%c%c%c%c%c%c", 
@@ -382,7 +387,7 @@ int admin_to_stop(void)
  ************************************************************/
 int get_cmd_line(unsigned int ns, unsigned char *buf, int flag)
 {
-	unsigned char	mybuf[256], *ptr, *p, tmp[16];
+	unsigned char	mybuf[257], *ptr, *p, tmp[16];
 	fd_set			rd;
 	int				count, bytes, i;
 	struct timeval	tv;
@@ -405,7 +410,7 @@ int get_cmd_line(unsigned int ns, unsigned char *buf, int flag)
 			continue;
 		}
 		if (admin_to_stop()) return -1;
-		if ((bytes=recv(ns, mybuf, sizeof(mybuf), 0))<=0)
+		if ((bytes=recv(ns, mybuf, sizeof(mybuf)-1, 0))<=0)
 			return -1;
 		timeoutcount = 0;
 		*(mybuf+bytes) = '\0';
@@ -555,7 +560,7 @@ void admin_help(unsigned int ns, u_char *param)
 	int				i;
 
 	memset(buf, 0, sizeof(buf));
-	strcat(buf, "\r\nCommands help£º\r\n\r\n");
+	strcat(buf, "\r\nCommands helpï¿½ï¿½\r\n\r\n");
 	SENDSTR(ns, buf);
 	i = 0;
 	while(admincmdtbl[i].keyword != NULL)
@@ -684,7 +689,7 @@ void admin_show_char_in_game(unsigned int ns, u_char *param)
  ************************************************************/
 void admin_restart(unsigned int ns, u_char *param)
 {
-	unsigned int	delay;
+	unsigned int	delay = DEFAULT_GS_SHUTDOWN_DELAY;
 	unsigned char	buf[256];
 
 	D2GSSetD2CSMaxGameNumber(0);
@@ -701,9 +706,9 @@ void admin_restart(unsigned int ns, u_char *param)
 			delay = atoi(param);
 			if (delay==0)
 				delay = DEFAULT_GS_SHUTDOWN_DELAY;
-			delay = (delay+d2gsconf.gsshutdowninterval-1)/d2gsconf.gsshutdowninterval;
 		}
 	}
+	delay = (delay+d2gsconf.gsshutdowninterval-1)/d2gsconf.gsshutdowninterval;
 
 	D2GSEventLog("admin_restart", "restart d2gs by admin %u", ns);
 	while(delay)
@@ -730,7 +735,7 @@ void admin_restart(unsigned int ns, u_char *param)
  ************************************************************/
 void admin_shutdown(unsigned int ns, u_char *param)
 {
-	unsigned int	delay;
+	unsigned int	delay = DEFAULT_GS_SHUTDOWN_DELAY;
 	unsigned char	buf[256];
 
 	D2GSSetD2CSMaxGameNumber(0);
@@ -747,9 +752,9 @@ void admin_shutdown(unsigned int ns, u_char *param)
 			delay = atoi(param);
 			if (delay==0)
 				delay = DEFAULT_GS_SHUTDOWN_DELAY;
-			delay = (delay+d2gsconf.gsshutdowninterval-1)/d2gsconf.gsshutdowninterval;
 		}
 	}
+	delay = (delay+d2gsconf.gsshutdowninterval-1)/d2gsconf.gsshutdowninterval;
 
 	D2GSEventLog("admin_shutdown", "shutdown d2gs by admin %u", ns);
 	while(delay)
@@ -777,21 +782,21 @@ void admin_shutdown(unsigned int ns, u_char *param)
 void admin_uptime(unsigned int ns, u_char *param)
 {
 	char			buf[256];
-	long			now, interval;
-	struct tm		*tm;
+	time_t			now, interval;
+	struct tm		tm_value;
 
 	now = time(NULL);
 	interval = now-uptime;
-	tm = localtime(&uptime);
-	strftime(buf, sizeof(buf), "The game server started at %m-%d %H:%M:%S\r\n", tm);
+	localtime_s(&tm_value, &uptime);
+	strftime(buf, sizeof(buf), "The game server started at %m-%d %H:%M:%S\r\n", &tm_value);
 	SENDSTR(ns, buf);
-	tm = gmtime(&interval);
+	gmtime_s(&tm_value, &interval);
 	//strftime(buf, sizeof(buf), "uptime %d days %H hours %M minutes %S seconds\r\n", tm);
-	_snprintf(buf, sizeof(buf), "uptime %d days %d hours %d minutes %d seconds\r\n",
-			tm->tm_yday, tm->tm_hour, tm->tm_min, tm->tm_sec);
+	snprintf(buf, sizeof(buf), "uptime %d days %d hours %d minutes %d seconds\r\n",
+			tm_value.tm_yday, tm_value.tm_hour, tm_value.tm_min, tm_value.tm_sec);
 	SENDSTR(ns, buf);
-	tm = localtime(&now);
-	strftime(buf, sizeof(buf), "Now it is %m-%d %H:%M:%S\r\n", tm);
+	localtime_s(&tm_value, &now);
+	strftime(buf, sizeof(buf), "Now it is %m-%d %H:%M:%S\r\n", &tm_value);
 	SENDSTR(ns, buf);
 	SENDSTR(ns, "\r\n");
 	return;

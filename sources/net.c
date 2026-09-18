@@ -14,8 +14,8 @@
 
 
 /* vars */
-static u_int	sockCS  = INVALID_SOCKET;	/* socket connect to D2CS */
-static u_int	sockDBS = INVALID_SOCKET;	/* socket connect to D2DBS */
+static SOCKET	sockCS  = INVALID_SOCKET;	/* socket connect to D2CS */
+static SOCKET	sockDBS = INVALID_SOCKET;	/* socket connect to D2DBS */
 static WSAEVENT	hRecvCS    = NULL;
 static WSAEVENT	hRecvDBS   = NULL;
 static HANDLE	hStopEvent = NULL;
@@ -143,7 +143,7 @@ int CleanupRoutineForNet(void)
  *********************************************************************/
 DWORD WINAPI D2GSConnectToD2xS(LPVOID lpParameter)
 {
-	u_int				sock;
+	SOCKET				sock = INVALID_SOCKET;
 	struct sockaddr_in	sin;
 	WSAEVENT			hConnEvent;
 	WSANETWORKEVENTS	NetEvents;
@@ -154,7 +154,7 @@ DWORD WINAPI D2GSConnectToD2xS(LPVOID lpParameter)
 	int					bufsize, optlen;
 
 
-	flag = (DWORD)lpParameter;
+	flag = (DWORD)(ULONG_PTR)lpParameter;
 
 	if (bConnectedToCS) CloseConnectionToD2CS();
 	hConnEvent = WSACreateEvent();
@@ -204,8 +204,8 @@ DWORD WINAPI D2GSConnectToD2xS(LPVOID lpParameter)
 		if (connect(sock, (struct sockaddr *)&sin, sizeof(sin)) != 0) {
 			if (WSAGetLastError()!=WSAEWOULDBLOCK) {
 				D2GSEventLog("D2GSConnectToD2xS", 
-					"Can't connect to %s. Code: %d", WSAGetLastError(),
-					(flag==D2CSERVER) ? "D2CS" : "D2DBS");
+					"Can't connect to %s. Code: %d",
+					(flag==D2CSERVER) ? "D2CS" : "D2DBS", WSAGetLastError());
 				Sleep(DEFAULT_CONNECT_INTERVAL);
 				continue;
 			}
@@ -241,12 +241,24 @@ DWORD WINAPI D2GSConnectToD2xS(LPVOID lpParameter)
 		if ((flag==D2CSERVER) && bConnectedToCS) {
 			D2GSEventLog("D2GSConnectToD2xS", "Connected to D2CS Successfully");
 			WSAEventSelect(sock, hConnEvent, 0);
+			if (WSAEventSelect(sock, hRecvCS, FD_READ|FD_WRITE|FD_CLOSE)) {
+				D2GSEventLog("D2GSConnectToD2xS",
+					"Failed subscribing to D2CS events. Code: %d", WSAGetLastError());
+				CloseConnectionToD2CS();
+				break;
+			}
 			D2GSSendClassToD2CS();
 			D2GSSendNetData(&nsbCS);
 			break;
 		} else if ((flag!=D2CSERVER) && bConnectedToDBS) {
 			D2GSEventLog("D2GSConnectToD2xS", "Connected to D2DBS Successfully");
 			WSAEventSelect(sock, hConnEvent, 0);
+			if (WSAEventSelect(sock, hRecvDBS, FD_READ|FD_WRITE|FD_CLOSE)) {
+				D2GSEventLog("D2GSConnectToD2xS",
+					"Failed subscribing to D2DBS events. Code: %d", WSAGetLastError());
+				CloseConnectionToD2DBS();
+				break;
+			}
 			D2GSSendClassToD2DBS();
 			D2GSSendNetData(&nsbDBS);
 			break;
@@ -275,7 +287,7 @@ DWORD WINAPI D2GSConnectToD2xS(LPVOID lpParameter)
  *********************************************************************/
 void CloseConnectionToD2CS(void)
 {
-	if (sockCS>0) {
+	if (sockCS != INVALID_SOCKET) {
 		shutdown(sockCS, SD_BOTH);
 		closesocket(sockCS);
 	}
@@ -299,7 +311,7 @@ void CloseConnectionToD2DBS(void)
 {
 	CloseConnectionToD2CS();
 	Sleep(5000);
-	if (sockDBS>0) {
+	if (sockDBS != INVALID_SOCKET) {
 		shutdown(sockDBS, SD_BOTH);
 		closesocket(sockDBS);
 	}
@@ -332,7 +344,7 @@ netloop:
 	if (!bConnectedToDBS) {
 		/* create thread to connect to D2DBS */
 		hThread = CreateThread(NULL, 0,
-			D2GSConnectToD2xS, (LPVOID)D2DBSERVER, 0, &dwThreadId);
+			D2GSConnectToD2xS, (LPVOID)(ULONG_PTR)D2DBSERVER, 0, &dwThreadId);
 		if (!hThread) {
 			D2GSEventLog("D2GSNetProcessor",
 				"Can't CreateThread D2GSConnectToD2xS. Code: %lu", GetLastError());
@@ -345,17 +357,14 @@ netloop:
 		CloseHandle(hThread);
 		if (dwWait==WAIT_OBJECT_0)
 			return FALSE;
-		else {
-			WaitForSingleObject(hStopEvent, d2gsconf.intervalreconnectd2cs*100);
-			goto netloop;
-		}
+		else goto netloop;
 	}
 
 	/* if not connected to D2CS, try to connect */
 	if (!bConnectedToCS) {
 		/* create thread to connect to D2CS */
 		hThread = CreateThread(NULL, 0,
-			D2GSConnectToD2xS, (LPVOID)D2CSERVER, 0, &dwThreadId);
+			D2GSConnectToD2xS, (LPVOID)(ULONG_PTR)D2CSERVER, 0, &dwThreadId);
 		if (!hThread) {
 			D2GSEventLog("D2GSNetProcessor",
 				"Can't CreateThread D2GSConnectToD2xS. Code: %lu", GetLastError());
@@ -368,10 +377,7 @@ netloop:
 		CloseHandle(hThread);
 		if (dwWait==WAIT_OBJECT_0)
 			return FALSE;
-		else {
-			WaitForSingleObject(hStopEvent, d2gsconf.intervalreconnectd2cs*100);
-			goto netloop;
-		}
+		else goto netloop;
 	}
 
 	/* to read the packet and told other routine to deal with it */
@@ -439,101 +445,55 @@ netloop:
  *********************************************************************/
 int D2GSNetRecvPacket(void)
 {
-	WSAEVENT			hEvents[4];
-	DWORD				dwWait;
-	WSANETWORKEVENTS	NetEvents;
+	fd_set				readable;
+	struct timeval		timeout;
 	u_char				buffer[8192];
 	int					val;
 	int					retval;
 
 	if (!bConnectedToCS) return ERROR_D2CS_CONNCLOSE;
+	if (!bConnectedToDBS) return ERROR_D2DBS_CONNCLOSE;
+	if (WaitForSingleObject(hStopEvent, 0)==WAIT_OBJECT_0)
+		return ERROR_D2GSNET_RECV_TIMEOUT;
 
-	if (WSAEventSelect(sockCS, hRecvCS, FD_READ|FD_WRITE|FD_CLOSE)) {
-		D2GSEventLog("D2GSNetRecvPacket",
-			"Failed in WSAEventSelect(). Code %u", WSAGetLastError());
-		return ERROR_D2GSNET_RECV_TIMEOUT;
-	}
-	if (WSAEventSelect(sockDBS, hRecvDBS, FD_READ|FD_WRITE|FD_CLOSE)) {
-		D2GSEventLog("D2GSNetRecvPacket",
-			"Failed in WSAEventSelect(). Code %u", WSAGetLastError());
-		return ERROR_D2GSNET_RECV_TIMEOUT;
-	}
-
-	hEvents[0] = hStopEvent;
-	hEvents[1] = hRecvCS;
-	hEvents[2] = hRecvDBS;
-	retval = ERROR_D2GSNET_RECV_TIMEOUT;
-	dwWait = WSAWaitForMultipleEvents(3, hEvents, FALSE, 100, FALSE);
-	if (dwWait==WSA_WAIT_TIMEOUT)
-		return D2GS_WAIT_TIMEOUT;
-	else if (dwWait==WSA_WAIT_EVENT_0 || dwWait==WAIT_IO_COMPLETION) {
-		return ERROR_D2GSNET_RECV_TIMEOUT;
-	} else if (dwWait==WSA_WAIT_EVENT_0+1) {
-		/*************************************************************************/
-		/* data from D2CS */
-		if (WSAEnumNetworkEvents(sockCS, hRecvCS, &NetEvents)) {
-			D2GSEventLog("D2GSNetRecvPacket",
-				"Failed in WSAEnumNetworkEvents. Code: %d", WSAGetLastError());
-			return ERROR_D2CS_ENUMNETEVENT;
-		} 
-		if (NetEvents.lNetworkEvents & FD_CLOSE)
-			return ERROR_D2CS_CONNCLOSE;
-		if (NetEvents.lNetworkEvents & FD_WRITE) {
-			if (NetEvents.iErrorCode[FD_WRITE_BIT])
-				return ERROR_D2CS_CONNCLOSE;
-			nsbCS.writable = TRUE;
-			D2GSEventLog("D2GSNetRecvPacket", "CS socket become writable");
-			retval = 0;
-		}
-		if (NetEvents.lNetworkEvents & FD_READ) {
-			if (NetEvents.iErrorCode[FD_READ_BIT])
-				return ERROR_D2CS_CONNCLOSE;
-			/* now can read the data */
-			val = recv(sockCS, buffer, sizeof(buffer), 0);
-			if (val<0) {
-				D2GSEventLog("D2GSNetRecvPacket",
-					"Error in recv() with socket to D2CS. Code: %d", WSAGetLastError());
-				return ERROR_D2CS_RECV;
-			} else if (val==0)
-				return ERROR_D2CS_CONNCLOSE;
-			NRBAddNewData(&nrbCS, buffer, val);
-			retval = 0;
-		}
-		/*************************************************************************/
-	} else if (dwWait==WSA_WAIT_EVENT_0+2) {
-		/*************************************************************************/
-		/* data from D2DBS */
-		if (WSAEnumNetworkEvents(sockDBS, hRecvDBS, &NetEvents)) {
-			D2GSEventLog("D2GSNetRecvPacket",
-				"Failed in WSAEnumNetworkEvents. Code: %d", WSAGetLastError());
-			return ERROR_D2DBS_ENUMNETEVENT;
-		} 
-		if (NetEvents.lNetworkEvents & FD_CLOSE)
-			return ERROR_D2DBS_CONNCLOSE;
-		if (NetEvents.lNetworkEvents & FD_WRITE) {
-			if (NetEvents.iErrorCode[FD_WRITE_BIT])
-				return ERROR_D2CS_CONNCLOSE;
-			nsbCS.writable = TRUE;
-			D2GSEventLog("D2GSNetRecvPacket", "DBS socket become writable");
-			retval = 0;
-		}
-		if (NetEvents.lNetworkEvents & FD_READ) {
-			if (NetEvents.iErrorCode[FD_READ_BIT])
-				return ERROR_D2DBS_CONNCLOSE;
-			/* now can read the data */
-			val = recv(sockDBS, buffer, sizeof(buffer), 0);
-			if (val<0) {
-				D2GSEventLog("D2GSNetRecvPacket",
-					"Error in recv() with socket to D2DBS. Code: %d", WSAGetLastError());
-				return ERROR_D2DBS_RECV;
-			} else if (val==0)
-				return ERROR_D2DBS_CONNCLOSE;
-			NRBAddNewData(&nrbDBS, buffer, val);
-			retval = 0;
-		}
-		/*************************************************************************/
-	} else
+	FD_ZERO(&readable);
+	FD_SET(sockCS, &readable);
+	FD_SET(sockDBS, &readable);
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 100000;
+	val = select(0, &readable, NULL, NULL, &timeout);
+	if (val==SOCKET_ERROR) {
+		D2GSEventLog("D2GSNetRecvPacket", "select() failed. Code: %d",
+			WSAGetLastError());
 		return ERROR_D2CS_WAITEVENT;
+	}
+	if (!val) return D2GS_WAIT_TIMEOUT;
+
+	retval = D2GS_WAIT_TIMEOUT;
+	if (FD_ISSET(sockCS, &readable)) {
+		val = recv(sockCS, buffer, sizeof(buffer), 0);
+		if (val<0) {
+			D2GSEventLog("D2GSNetRecvPacket",
+				"Error in recv() with socket to D2CS. Code: %d", WSAGetLastError());
+			return ERROR_D2CS_RECV;
+		} else if (!val) {
+			return ERROR_D2CS_CONNCLOSE;
+		}
+		NRBAddNewData(&nrbCS, buffer, val);
+		retval = 0;
+	}
+	if (FD_ISSET(sockDBS, &readable)) {
+		val = recv(sockDBS, buffer, sizeof(buffer), 0);
+		if (val<0) {
+			D2GSEventLog("D2GSNetRecvPacket",
+				"Error in recv() with socket to D2DBS. Code: %d", WSAGetLastError());
+			return ERROR_D2DBS_RECV;
+		} else if (!val) {
+			return ERROR_D2DBS_CONNCLOSE;
+		}
+		NRBAddNewData(&nrbDBS, buffer, val);
+		retval = 0;
+	}
 
 	return retval;
 
@@ -547,7 +507,7 @@ int D2GSNetRecvPacket(void)
 int D2GSSendNetData(NETSENDBUFFER *lpnsr)
 {
 	int		bytes;
-	u_int	sock;
+	SOCKET	sock;
 	u_char	*buf;
 	u_int	datalen;
 	int		ret;
@@ -626,6 +586,7 @@ int D2GSNetSendPacket(D2GSPACKET *lpPacket)
 			D2GSSendNetData(&nsbCS);
 			return 0;
 		}
+		return ERROR_D2CS_SEND;
 	case PACKET_PEER_SEND_TO_D2DBS:
 		if (!bConnectedToDBS) return ERROR_D2DBS_CONNCLOSE;
 		/*if (send(sockDBS, lpPacket->data, lpPacket->datalen, 0) != lpPacket->datalen)
@@ -641,6 +602,7 @@ int D2GSNetSendPacket(D2GSPACKET *lpPacket)
 			D2GSSendNetData(&nsbDBS);
 			return 0;
 		}
+		return ERROR_D2DBS_SEND;
 	}
 
 	return ERROR_BAD_PACKET_PTR;
@@ -732,7 +694,12 @@ int NRBRemovePacketOut(NETRECVBUFFER *lpnbr, D2GSPACKET *lpPkt)
 
 	ph = (t_d2cs_d2gs_generic *)(lpnbr->lpHead);
 	bytes = (u_int)(bn_ntohs(ph->h.size));
-	if (bytes==0) return ERROR_NOT_INTEGRITY_PACKET;
+	if (bytes < sizeof(t_d2cs_d2gs_generic) || bytes > sizeof(lpPkt->data)) {
+		u_short peer = lpnbr->peer;
+		D2GSEventLog("NRBRemovePacketOut", "Invalid packet size %u; resetting receive buffer", bytes);
+		NRBInitialize(lpnbr, peer);
+		return ERROR_BAD_PACKET_PTR;
+	}
 	if ((lpnbr->length) >= bytes) {
 		CopyMemory(lpPkt->data, lpnbr->lpHead, bytes);
 		lpPkt->datalen = bytes;
@@ -868,7 +835,7 @@ int NSBRemoveData(NETSENDBUFFER *lpnsr, u_int datalen)
  *********************************************************************/
 int D2GSGetSockName(int server, DWORD *ipaddr, DWORD *port)
 {
-	u_int				sock;
+	SOCKET				sock;
 	struct sockaddr_in	name;
 	int					namelen;
 

@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include "d2gelib/d2server.h"
@@ -672,15 +673,14 @@ void D2GSGetDataRequestTimerRoutine(void)
 
 /*-------------------------------------------------------------------*/
 
-void FormatTimeString(long t, u_char *buf, int len)
+void FormatTimeString(time_t t, u_char *buf, int len)
 {
-	struct tm		*tm;
-	long			now;
+	struct tm tm_value;
 
 	ZeroMemory(buf, len);
-	now = t;
-	tm = localtime(&now);
-	_snprintf(buf, len-1, "%02d:%02d:%02d", tm->tm_hour, tm->tm_min, tm->tm_sec);
+	if (localtime_s(&tm_value, &t) != 0) return;
+	snprintf((char *)buf, len, "%02d:%02d:%02d",
+		tm_value.tm_hour, tm_value.tm_min, tm_value.tm_sec);
 	return;
 
 } /* End of FormatTimeString() */

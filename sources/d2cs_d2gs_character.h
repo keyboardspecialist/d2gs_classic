@@ -13,6 +13,9 @@
 #define D2CHARINFO_MAGICWORD		0x12345678
 #define D2CHARINFO_VERSION			0x00010000
 #define D2CHARINFO_PORTRAIT_PADSIZE	30
+#define D2CHARINFO_PORTRAIT_MODERN_SIZE 34
+#define D2CHARINFO_PORTRAIT_LEGACY_BASE_SIZE 44
+#define D2CHARINFO_PORTRAIT_STORAGE_SIZE 64
 
 typedef struct
 {
@@ -21,7 +24,8 @@ typedef struct
 	bn_int		create_time;	/* character creation time */
 	bn_int		last_time;		/* character last access time */
 	bn_int		checksum;
-	bn_int		reserved[7];                             
+	bn_int		total_play_time;
+	bn_int		reserved[6];
 	unsigned char	charname[MAX_CHARNAME_LEN];
 	unsigned char	account[MAX_ACCTNAME_LEN];
 	unsigned char	realmname[MAX_REALMNAME_LEN];
@@ -39,22 +43,27 @@ typedef struct
 {
         bn_short        header;	/* 0x84 0x80 */
         bn_byte         gfx[11];
-        bn_byte         class;
+        bn_byte         chclass;
         bn_byte         color[11];
         bn_byte         level;
         bn_byte         status;
         bn_byte         u1[3];
-        bn_byte         u2[3];
-        bn_byte         end;	/* 0x00 */
+        bn_byte         ladder;
+        bn_byte         u2[2];
+		bn_byte         end;	/* 0x00 */
+		bn_byte         legacy_tail[D2CHARINFO_PORTRAIT_PADSIZE];
 } t_d2charinfo_portrait;
 
 typedef struct
 {
 	t_d2charinfo_header		header;
 	t_d2charinfo_portrait	portrait;
-	bn_byte					pad[D2CHARINFO_PORTRAIT_PADSIZE];
 	t_d2charinfo_summary	summary;
 } t_d2charinfo_file;
+
+_Static_assert(sizeof(t_d2charinfo_header) == 112, "Character-info header ABI changed");
+_Static_assert(sizeof(t_d2charinfo_portrait) == 64, "Character portrait ABI changed");
+_Static_assert(sizeof(t_d2charinfo_file) == 192, "Character-info file ABI changed");
 
 #ifdef D2GS
 #pragma pack(pop, pack01)

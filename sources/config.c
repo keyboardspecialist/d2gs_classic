@@ -3,11 +3,13 @@
 #include <winreg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "d2gs.h"
 #include "config.h"
 #include "eventlog.h"
 #include "vars.h"
 
+static HKEY configRoot = HKEY_LOCAL_MACHINE;
 
 /*********************************************************************
  * Purpose: to read configurations to the D2GSCONFIGS structure
@@ -22,8 +24,12 @@ int D2GSReadConfig(void)
 	char		strbuf[256];
 
 	result = FALSE;
-	if (!RegkeyOpen(HKEY_LOCAL_MACHINE, REGKEY_ROOT, &hKey, KEY_READ)) {
-		D2GSEventLog("D2GSReadConfig", "Can't open registry key '\\\\HKEY_LOCAL_MACHINE\\%s'", REGKEY_ROOT);
+	if (RegkeyOpen(HKEY_CURRENT_USER, REGKEY_ROOT, &hKey, KEY_READ)) {
+		configRoot = HKEY_CURRENT_USER;
+	} else if (RegkeyOpen(HKEY_LOCAL_MACHINE, REGKEY_ROOT, &hKey, KEY_READ)) {
+		configRoot = HKEY_LOCAL_MACHINE;
+	} else {
+		D2GSEventLog("D2GSReadConfig", "Can't open registry key '%s' in HKCU or HKLM", REGKEY_ROOT);
 		return result;
 	}
 
@@ -55,7 +61,7 @@ int D2GSReadConfig(void)
 	if (!RegkeyReadDWORD(hKey, REGKEY_D2CSPORT, &dwval)) {
 		D2GSEventLog("D2GSReadConfig", "Can't read key '%s', set to default %d",
 				REGKEY_D2CSPORT, DEFAULT_D2CS_PORT);
-		d2gsconf.d2csport = DEFAULT_D2CS_PORT;
+		d2gsconf.d2csport = htons(DEFAULT_D2CS_PORT);
 	} else
 		d2gsconf.d2csport = htons((u_short)dwval);
 
@@ -63,7 +69,7 @@ int D2GSReadConfig(void)
 	if (!RegkeyReadDWORD(hKey, REGKEY_D2DBSPORT, &dwval)) {
 		D2GSEventLog("D2GSReadConfig", "Can't read key '%s', set to default %d",
 				REGKEY_D2DBSPORT, DEFAULT_D2DBS_PORT);
-		d2gsconf.d2csport = DEFAULT_D2DBS_PORT;
+		d2gsconf.d2dbsport = htons(DEFAULT_D2DBS_PORT);
 	} else
 		d2gsconf.d2dbsport = htons((short)dwval);
 
@@ -182,7 +188,7 @@ int D2GSReadConfig(void)
 	if (!RegkeyReadDWORD(hKey, REGKEY_ADMINPORT, &dwval)) {
 		D2GSEventLog("D2GSReadConfig", "Can't read key '%s', set to default %d",
 				REGKEY_ADMINPORT, DEFAULT_ADMIN_PORT);
-		d2gsconf.adminport = DEFAULT_D2DBS_PORT;
+		d2gsconf.adminport = htons(DEFAULT_ADMIN_PORT);
 	} else
 		d2gsconf.adminport = htons((short)dwval);
 
@@ -273,7 +279,7 @@ int RegkeyReadString(HKEY hKey, LPCTSTR name, char *buf, DWORD buflen)
 	dwLen = buflen;
 	ZeroMemory(buf, buflen);
 	lReturn = RegQueryValueEx(hKey, name, NULL, &dwType, buf, &dwLen);
-	if (lReturn==ERROR_SUCCESS) {
+	if (lReturn==ERROR_SUCCESS && (dwType==REG_SZ || dwType==REG_EXPAND_SZ)) {
 		*(buf+buflen-1) = 0;
 		return TRUE;
 	} else
@@ -295,7 +301,7 @@ int RegkeyReadDWORD(HKEY hKey, LPCTSTR name, DWORD *val)
 		return FALSE;
 	dwLen = sizeof(dwVal);
 	lReturn = RegQueryValueEx(hKey, name, NULL, &dwType, (LPBYTE)&dwVal, &dwLen);
-	if (lReturn==ERROR_SUCCESS) {
+	if (lReturn==ERROR_SUCCESS && dwType==REG_DWORD && dwLen==sizeof(dwVal)) {
 		*val = dwVal;
 		return TRUE;
 	} else
@@ -353,7 +359,7 @@ int D2GSSetConfigDWORD(LPCSTR keyname, DWORD dwVal)
 {
 	HKEY		hKey;
 
-	if (!RegkeyOpen(HKEY_LOCAL_MACHINE, REGKEY_ROOT, &hKey, KEY_SET_VALUE))
+	if (!RegkeyOpen(configRoot, REGKEY_ROOT, &hKey, KEY_SET_VALUE))
 		return FALSE;
 	if (!RegkeyWriteDWORD(hKey, keyname, dwVal)) {
 		RegkeyClose(hKey);
@@ -374,7 +380,7 @@ int D2GSSetConfigString(LPCSTR keyname, LPCSTR str)
 {
 	HKEY		hKey;
 
-	if (!RegkeyOpen(HKEY_LOCAL_MACHINE, REGKEY_ROOT, &hKey, KEY_SET_VALUE))
+	if (!RegkeyOpen(configRoot, REGKEY_ROOT, &hKey, KEY_SET_VALUE))
 		return FALSE;
 	if (!RegkeyWriteString(hKey, keyname, str)) {
 		RegkeyClose(hKey);

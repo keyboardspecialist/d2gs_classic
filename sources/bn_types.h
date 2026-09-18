@@ -1,14 +1,15 @@
 #ifndef INCLUDED_BN_TYPES_H
 #define INCLUDED_BN_TYPES_H
 
+#include <stdint.h>
 
 /* basic bn types */
-typedef unsigned char		bn_basic;
-typedef unsigned char		bn_char;
-typedef unsigned char		bn_byte;
-typedef unsigned short		bn_short;
-typedef unsigned int		bn_int;
-typedef unsigned long		bn_long;	/* 4 bytes, not 8 bytes, fix me */
+typedef uint8_t		bn_basic;
+typedef uint8_t		bn_char;
+typedef uint8_t		bn_byte;
+typedef uint16_t	bn_short;
+typedef uint32_t	bn_int;
+typedef uint32_t	bn_long;
 
 
 /* use network order or not? */

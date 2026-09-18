@@ -29,13 +29,48 @@ extern void __fastcall LeaveGame(LPGAMEDATA lpGameData, WORD wGameId, WORD wChar
 				LPCSTR lpAccountName, PLAYERDATA PlayerData,
 				PLAYERMARK PlayerMark)
 {
-	DebugEventCallback("LeaveGame",14, _D(lpGameData), _D(wGameId), _D(wCharClass),
+	DebugEventCallback("LeaveGame",15, _D(lpGameData), _D(wGameId), _D(wCharClass),
 			_D(dwCharLevel), _D(dwExpLow), _D(dwExpHigh), _D(wCharStatus),
 			_D(lpCharName), _D(lpCharPortrait), _D(bUnlock), _D(dwZero1),
 			_D(dwZero2), _D(lpAccountName), _D(PlayerData),_D(PlayerMark));
 	D2GSCBLeaveGame(lpGameData, wGameId, wCharClass, dwCharLevel, dwExpLow,
 		dwExpHigh, wCharStatus, lpCharName, lpCharPortrait, bUnlock,
 		dwZero1, dwZero2, lpAccountName, PlayerData, PlayerMark);
+	return;
+}
+
+
+static void __fastcall LeaveGame109b(LPGAMEDATA lpGameData, WORD wGameId,
+				WORD wCharClass, DWORD dwCharLevel, DWORD dwExpLow,
+				DWORD dwExpHigh, WORD wCharStatus, LPCSTR lpCharName,
+				LPCSTR lpCharPortrait, BOOL bUnlock, DWORD dwZero1,
+				DWORD dwZero2, LPCSTR lpAccountName, PLAYERDATA PlayerData)
+{
+	DebugEventCallback("LeaveGame109b",14, _D(lpGameData), _D(wGameId),
+			_D(wCharClass), _D(dwCharLevel), _D(dwExpLow), _D(dwExpHigh),
+			_D(wCharStatus), _D(lpCharName), _D(lpCharPortrait), _D(bUnlock),
+			_D(dwZero1), _D(dwZero2), _D(lpAccountName), _D(PlayerData));
+	D2GSCBLeaveGame(lpGameData, wGameId, wCharClass, dwCharLevel, dwExpLow,
+		dwExpHigh, wCharStatus, lpCharName, lpCharPortrait, bUnlock,
+		dwZero1, dwZero2, lpAccountName, PlayerData, 0);
+	return;
+}
+
+
+static void __fastcall LeaveGame100(WORD wGameId, WORD wCharClass,
+				DWORD dwCharLevel, DWORD dwExpLow, DWORD dwExpHigh,
+				WORD wCharStatus, LPCSTR lpCharName, LPCSTR lpCharPortrait)
+{
+	CHAR accountName[MAX_ACCTNAME_LEN];
+
+	ZeroMemory(accountName, sizeof(accountName));
+	D2GSGetAccountName(lpCharName, accountName, sizeof(accountName));
+	DebugEventCallback("LeaveGame100", 8, _D(wGameId), _D(wCharClass),
+			_D(dwCharLevel), _D(dwExpLow), _D(dwExpHigh), _D(wCharStatus),
+			_D(lpCharName), _D(lpCharPortrait));
+	D2GSCBLeaveGame(0, wGameId, wCharClass, dwCharLevel, dwExpLow,
+		dwExpHigh, wCharStatus, lpCharName, lpCharPortrait, TRUE,
+		0, 0, accountName, 0, 0);
 	return;
 }
 
@@ -51,6 +86,19 @@ extern void __fastcall GetDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpChar
 }
 
 
+static void __fastcall GetDatabaseCharacter100(LPCSTR lpCharName, DWORD dwClientId)
+{
+	CHAR accountName[MAX_ACCTNAME_LEN];
+
+	ZeroMemory(accountName, sizeof(accountName));
+	D2GSGetAccountName(lpCharName, accountName, sizeof(accountName));
+	DebugEventCallback("GetDatabaseCharacter100", 2, _D(lpCharName),
+		_D(dwClientId));
+	D2GSCBGetDatabaseCharacter(0, lpCharName, dwClientId, accountName);
+	return;
+}
+
+
 extern void __fastcall SaveDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCharName,
 					LPCSTR lpAccountName, LPVOID lpSaveData,
 					DWORD dwSize, PLAYERDATA PlayerData)
@@ -59,6 +107,18 @@ extern void __fastcall SaveDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCha
 			_D(lpAccountName), _D(lpSaveData), _D(dwSize), _D(PlayerData));
 	D2GSCBSaveDatabaseCharacter(lpGameData, lpCharName,
 			lpAccountName, lpSaveData, dwSize, PlayerData);
+	return;
+}
+
+
+static void __fastcall SaveDatabaseCharacter100(LPCSTR lpCharName,
+				LPCSTR lpAccountName, LPVOID lpSaveData,
+				DWORD dwSize, PLAYERDATA PlayerData)
+{
+	DebugEventCallback("SaveDatabaseCharacter100", 5, _D(lpCharName),
+			_D(lpAccountName), _D(lpSaveData), _D(dwSize), _D(PlayerData));
+	D2GSCBSaveDatabaseCharacter(0, lpCharName, lpAccountName, lpSaveData,
+		dwSize, PlayerData);
 	return;
 }
 
@@ -103,6 +163,16 @@ extern void __fastcall UnlockDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpC
 }
 
 
+static void __fastcall UnlockDatabaseCharacter100(LPCSTR lpCharName,
+				LPCSTR lpAccountName)
+{
+	DebugEventCallback("UnlockDatabaseCharacter100", 2, _D(lpCharName),
+		_D(lpAccountName));
+	D2GSUnlockChar(lpAccountName, lpCharName);
+	return;
+}
+
+
 extern void __fastcall RelockDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCharName,
 						LPCSTR lpAccountName)
 {
@@ -122,6 +192,19 @@ extern void __fastcall UpdateCharacterLadder(LPCSTR lpCharName, WORD wCharClass,
 			_D(wCharStatus), _D(PlayerMark));
 	D2GSUpdateCharacterLadder(lpCharName, wCharClass, dwCharLevel, dwCharExpLow,
 		dwCharExpHigh, wCharStatus);
+	return;
+}
+
+
+static void __fastcall UpdateCharacterLadder100(LPCSTR lpCharName,
+				WORD wCharClass, DWORD dwCharLevel, DWORD dwCharExpLow,
+				DWORD dwCharExpHigh, WORD wCharStatus)
+{
+	DebugEventCallback("UpdateCharacterLadder100", 6, _D(lpCharName),
+			_D(wCharClass), _D(dwCharLevel), _D(dwCharExpLow),
+			_D(dwCharExpHigh), _D(wCharStatus));
+	D2GSUpdateCharacterLadder(lpCharName, wCharClass, dwCharLevel,
+		dwCharExpLow, dwCharExpHigh, wCharStatus);
 	return;
 }
 
@@ -169,6 +252,14 @@ extern void __fastcall ReservedCallback2(DWORD dwReserved1, DWORD dwReserved2,
 }
 	
 
+static void __fastcall ReservedCallback2_109b(DWORD dwReserved1, DWORD dwReserved2)
+{
+	DebugEventCallback("ReservedCallback2_109b",2, _D(dwReserved1),
+		_D(dwReserved2));
+	return;
+}
+
+
 extern void __fastcall LoadComplete(WORD wGameId, LPCSTR lpCharName, BOOL bExpansion)
 {
 	DebugEventCallback("LoadComplete",3, _D(wGameId), _D(lpCharName),
@@ -178,22 +269,41 @@ extern void __fastcall LoadComplete(WORD wGameId, LPCSTR lpCharName, BOOL bExpan
 }
 
 
-extern PEVENTCALLBACKTABLE EventCallbackTableInit(void)
+extern PEVENTCALLBACKTABLE EventCallbackTableInit(D2GSCALLBACKABI callbackAbi)
 {
 	gEventCallbackTable.fpCloseGame=CloseGame;
-	gEventCallbackTable.fpLeaveGame=LeaveGame;
-	gEventCallbackTable.fpGetDatabaseCharacter=GetDatabaseCharacter;
-	gEventCallbackTable.fpSaveDatabaseCharacter=SaveDatabaseCharacter;
+	if (callbackAbi == D2GS_CALLBACK_ABI_100)
+		gEventCallbackTable.fpLeaveGame=LeaveGame100;
+	else if (callbackAbi == D2GS_CALLBACK_ABI_109B)
+		gEventCallbackTable.fpLeaveGame=LeaveGame109b;
+	else
+		gEventCallbackTable.fpLeaveGame=LeaveGame;
+	if (callbackAbi == D2GS_CALLBACK_ABI_100) {
+		gEventCallbackTable.fpGetDatabaseCharacter=GetDatabaseCharacter100;
+		gEventCallbackTable.fpSaveDatabaseCharacter=SaveDatabaseCharacter100;
+	} else {
+		gEventCallbackTable.fpGetDatabaseCharacter=GetDatabaseCharacter;
+		gEventCallbackTable.fpSaveDatabaseCharacter=SaveDatabaseCharacter;
+	}
 	gEventCallbackTable.fpServerLogMessage=ServerLogMessage;
 	gEventCallbackTable.fpEnterGame=EnterGame;
 	gEventCallbackTable.fpFindPlayerToken=FindPlayerToken;
-	gEventCallbackTable.fpUnlockDatabaseCharacter=UnlockDatabaseCharacter;
+	if (callbackAbi == D2GS_CALLBACK_ABI_100)
+		gEventCallbackTable.fpUnlockDatabaseCharacter=UnlockDatabaseCharacter100;
+	else
+		gEventCallbackTable.fpUnlockDatabaseCharacter=UnlockDatabaseCharacter;
 	gEventCallbackTable.fpRelockDatabaseCharacter=RelockDatabaseCharacter;
-	gEventCallbackTable.fpUpdateCharacterLadder=UpdateCharacterLadder;
+	if (callbackAbi == D2GS_CALLBACK_ABI_100)
+		gEventCallbackTable.fpUpdateCharacterLadder=UpdateCharacterLadder100;
+	else
+		gEventCallbackTable.fpUpdateCharacterLadder=UpdateCharacterLadder;
 	gEventCallbackTable.fpUpdateGameInformation=UpdateGameInformation;
 	gEventCallbackTable.fpSetGameData=SetGameData;
 	gEventCallbackTable.fpReserved1=ReservedCallback1;
-	gEventCallbackTable.fpReserved2=ReservedCallback2;
+	if (callbackAbi == D2GS_CALLBACK_ABI_109B)
+		gEventCallbackTable.fpReserved2=ReservedCallback2_109b;
+	else
+		gEventCallbackTable.fpReserved2=ReservedCallback2;
 	gEventCallbackTable.fpSaveDatabaseGuild=SaveDatabaseGuild;
 	gEventCallbackTable.fpLoadComplete=LoadComplete;
 	return &gEventCallbackTable;

@@ -9,6 +9,7 @@
 #define INCLUDED_D2GS_H
 
 
+#include <winsock2.h>
 #include <windows.h>
 
 
@@ -30,7 +31,7 @@
 #define DEFAULT_ADMIN_PORT				8888
 #define DEFAULT_ADMIN_TIMEOUT			300
 #define DEFAULT_MAX_GAMES				100
-#define DEFAULT_NT_MODE					0
+#define DEFAULT_NT_MODE					1
 #define DEFAULT_PRECACHE_MODE			0
 #define DEFAULT_GE_PATCH				1
 #define DEFAULT_GE_LOG					0

@@ -7,6 +7,7 @@
  */
 
 #include <windows.h>
+#include <time.h>
 #include "d2gs.h"
 #include "bn_types.h"
 #include "list.h"
@@ -22,8 +23,8 @@ typedef struct RAW_D2CHARINFO {
 	bn_short	EnterGame;
 	bn_short	AllowLadder;
 	bn_short	CharLockStatus;
-	DWORD		EnterTime;
-	DWORD		CharCreateTime;
+	time_t		EnterTime;
+	time_t		CharCreateTime;
 	DWORD		ClientId;
 	WORD		GameId;
 	struct RAW_D2GAMEINFO	*lpGameInfo;	/* pointer to the GAMEINFO */
@@ -39,7 +40,7 @@ typedef struct RAW_D2GAMEINFO {
 	bn_byte		reserved;
 	WORD		GameId;
 	WORD		CharCount;
-	DWORD		CreateTime;
+	time_t		CreateTime;
 	DWORD		disable;
 	struct RAW_D2CHARINFO	*lpCharInfo;
 	struct RAW_D2GAMEINFO	*prev;
@@ -90,7 +91,7 @@ D2CHARINFO *D2GSFindPendingCharByCharName(UCHAR *CharName);
 D2GETDATAREQUEST *D2GSFindGetDataRequestBySeqno(DWORD dwSeqno);
 void D2GSPendingCharTimerRoutine(void);
 void D2GSGetDataRequestTimerRoutine(void);
-void FormatTimeString(long t, u_char *buf, int len);
+void FormatTimeString(time_t t, u_char *buf, int len);
 void D2GSShowGameList(unsigned int ns);
 void D2GSShowCharInGame(unsigned int ns, WORD GameId);
 void D2GSDisableGameByGameId(unsigned int ns, WORD GameId);

@@ -1,17 +1,21 @@
 #include <windows.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 #include "d2gelib/d2server.h"
 
 #define SPLIT_STRING_INIT_COUNT		32
 #define	SPLIT_STRING_INCREASEMENT	32
 extern char * * strtoarray(char const * str, char const * delim, int * count)
 {
-	int	i ,n, index_size;
+	int	i, n;
+	size_t	index_size;
 	int	in_delim, match;
 	char	* temp, * result;
-	int	* pindex;
+	size_t	* pindex;
 	char	* pd;
 	char	const * ps;
-	char	* realloc_tmp;
+	size_t	* realloc_tmp;
 
 	if (!str || !delim || !count) return NULL;
 
@@ -19,7 +23,7 @@ extern char * * strtoarray(char const * str, char const * delim, int * count)
 	if (!temp) return NULL;
 
 	n = SPLIT_STRING_INIT_COUNT;
-	pindex=malloc(sizeof(char *) * n);
+	pindex=malloc(sizeof(*pindex) * n);
 	if (!pindex) {
 		free(temp);
 		return NULL;
@@ -48,12 +52,12 @@ extern char * * strtoarray(char const * str, char const * delim, int * count)
 			if (in_delim) {
 				if (*count>=n) {
 					n += SPLIT_STRING_INCREASEMENT;
-					if (!(realloc_tmp=realloc(pindex,n * sizeof(char *)))) {
+					if (!(realloc_tmp=realloc(pindex, n * sizeof(*pindex)))) {
 						free(pindex);
 						free(temp);
 						return NULL;
 					}
-					pindex=(int *)realloc_tmp;
+					pindex=realloc_tmp;
 				}
 				pindex[*count]= pd-temp;
 				in_delim = 0;
@@ -81,10 +85,8 @@ extern char * * strtoarray(char const * str, char const * delim, int * count)
 		return NULL;
 	}
 	memcpy(result+index_size,temp,pd-temp);
-	for (i=0; i< *count; i++) {
-		pindex[i]+=(int)result+index_size;
-	}
-	memcpy(result,pindex,index_size);
+	for (i=0; i< *count; i++)
+		((char **)result)[i] = result + index_size + pindex[i];
 	free(temp);
 	free(pindex);
 	return (char **) result;
@@ -93,19 +95,23 @@ extern char * * strtoarray(char const * str, char const * delim, int * count)
 
 extern char * * strtoargv(char const * str, int * count)
 {
-	unsigned int	n, index_size;
+	unsigned int	n;
+	size_t		index_size;
 	char		* temp;
 	int		i, j;
-	int		* pindex;
+	size_t		* pindex;
 	char		* result;
-	char		* realloc_tmp;
+	size_t		* realloc_tmp;
 
 	if (!str || !count) return NULL;
 	temp=malloc(strlen(str)+1);
 	if (!temp) return NULL;
 	n = SPLIT_STRING_INIT_COUNT;
-	pindex=malloc(n * sizeof (char *));
-	if (!pindex) return NULL;
+	pindex=malloc(n * sizeof(*pindex));
+	if (!pindex) {
+		free(temp);
+		return NULL;
+	}
 
 	i=j=0;
 	*count=0;
@@ -114,12 +120,12 @@ extern char * * strtoargv(char const * str, int * count)
 		if (!str[i]) break;
 		if ((unsigned int)(*count) >=n ) {
 			n += SPLIT_STRING_INCREASEMENT;
-			if (!(realloc_tmp=realloc(pindex,n * sizeof(char *)))) {
+			if (!(realloc_tmp=realloc(pindex, n * sizeof(*pindex)))) {
 				free(pindex);
 				free(temp);
 				return NULL;
 			}
-			pindex=(int *)realloc_tmp;
+			pindex=realloc_tmp;
 		}
 		pindex[*count]=j;
 		(*count)++;
@@ -155,10 +161,8 @@ extern char * * strtoargv(char const * str, int * count)
 		return NULL;
 	}
 	memcpy(result+index_size,temp,j);
-	for (i=0; i< *count; i++) {
-		pindex[i] +=(int)result+index_size;
-	}
-	memcpy(result,pindex,index_size);
+	for (i=0; i< *count; i++)
+		((char **)result)[i] = result + index_size + pindex[i];
 	free(temp);
 	free(pindex);
 	return (char * *)result;
@@ -167,37 +171,15 @@ extern char * * strtoargv(char const * str, int * count)
 
 extern char * str_strip_affix(char * str, char const * affix)
 {
-	unsigned int i, j, n;
-	int		match;
+	size_t i, end;
 
 	if (!str) return NULL;
 	if (!affix) return str;
-	for (i=0; str[i]; i++) {
-		match=0;
-		for (n=0; affix[n]; n++) {
-			if (str[i]==affix[n]) {
-				match=1;
-				break;
-			}
-		}
-		if (!match) break;
-	}
-	for (j=strlen(str)-1; j>=i; j--) {
-		match=0;
-		for (n=0; affix[n]; n++) {
-			if (str[j]==affix[n]) {
-				match=1;
-				break;
-			}
-		}
-		if (!match) break;
-	}
-	if (i>j) {
-		str[0]='\0';
-	} else {
-		memmove(str,str+i,j-i+1);
-		str[j-i+1]='\0';
-	}
+	end = strlen(str);
+	for (i=0; i<end && strchr(affix, str[i]); i++);
+	while (end>i && strchr(affix, str[end-1])) end--;
+	memmove(str, str+i, end-i);
+	str[end-i]='\0';
 	return str;
 }
 

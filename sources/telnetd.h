@@ -37,7 +37,7 @@ typedef struct {
 int  D2GSAdminInitialize(void);
 int  CleanupRoutineForAdmin(void);
 DWORD WINAPI admin_service(LPVOID lpParam);
-DWORD WINAPI admin_thread(LPVOID *lpParam);
+DWORD WINAPI admin_thread(LPVOID lpParam);
 int  admin_analyse_cmd(u_char *buf, u_char *cmd, int x, int y);
 int  admin_to_stop(void);
 int  get_cmd_line(unsigned int ns, unsigned char *buf, int flag);

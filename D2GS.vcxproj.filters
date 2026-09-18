@@ -154,9 +154,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="resources\d2server.aps">
-      <Filter>Resource Files</Filter>
-    </None>
+    <None Include="config.example.reg" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="resources\D2Server.ico">

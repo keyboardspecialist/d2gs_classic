@@ -32,6 +32,7 @@ typedef struct
 {
 	t_d2cs_d2gs_header	h;
 	bn_int			sessionnum;
+	bn_int			signlen;
 	/*	realm name	*/
 } t_d2cs_d2gs_authreq;
 
@@ -41,6 +42,9 @@ typedef struct
 	t_d2cs_d2gs_header	h;
 	bn_int			version;
 	bn_int			checksum;
+	bn_int			randnum;
+	bn_int			signlen;
+	bn_basic		sign[128];
 } t_d2gs_d2cs_authreply;
 
 #define D2CS_D2GS_AUTHREPLY		0x11
@@ -58,6 +62,7 @@ typedef struct
 {
 	t_d2cs_d2gs_header	h;
 	bn_int			maxgame;
+	bn_int			gameflag;
 } t_d2gs_d2cs_setgsinfo;
 
 #define D2CS_D2GS_ECHOREQ		0x13
@@ -75,6 +80,7 @@ typedef struct {
 typedef struct
 {
 	t_d2cs_d2gs_header	h;
+	bn_byte			ladder;
 	bn_byte			expansion;
 	bn_byte			difficulty;
 	bn_byte			hardcore;
@@ -135,6 +141,15 @@ typedef struct
 	t_d2cs_d2gs_header	h;
 	bn_int			gameid;
 } t_d2gs_d2cs_closegame;
+
+#ifdef D2GS
+_Static_assert(sizeof(t_d2cs_d2gs_header) == 8, "D2CS/D2GS header ABI changed");
+_Static_assert(sizeof(t_d2cs_d2gs_authreq) == 16, "Auth request ABI changed");
+_Static_assert(sizeof(t_d2gs_d2cs_authreply) == 152, "Auth reply ABI changed");
+_Static_assert(sizeof(t_d2gs_d2cs_setgsinfo) == 16, "Server-info ABI changed");
+_Static_assert(sizeof(t_d2cs_d2gs_creategamereq) == 12, "Create-game request ABI changed");
+_Static_assert(sizeof(t_d2cs_d2gs_joingamereq) == 16, "Join-game request ABI changed");
+#endif
 
 #ifdef D2GS
 #pragma pack(pop, pack01)

@@ -1,6 +1,7 @@
 #ifndef INCLUDED_HANDLE_S2S_H
 #define INCLUDED_HANDLE_S2S_H
 
+#include <stddef.h>
 
 /* structure */
 typedef struct {
@@ -24,12 +25,12 @@ DWORD D2GSGetCheckSum(void);
 void D2GSSendClassToD2CS(void);
 void D2GSSendClassToD2DBS(void);
 void D2GSHandleS2SPacket(D2GSPACKET *lpPacket);
-void D2GSAuthreq(LPVOID *lpdata);
-void D2GSAuthReply(LPVOID *lpdata);
+void D2GSAuthreq(const void *lpdata, size_t datalen);
+void D2GSAuthReply(const void *lpdata, size_t datalen);
 void D2GSSetD2CSMaxGameNumber(DWORD maxgamenum);
 void D2XSEchoReply(int peer);
-void D2CSCreateEmptyGame(LPVOID *lpdata);
-void D2CSClientJoinGameRequest(LPVOID *lpdata);
+void D2CSCreateEmptyGame(const void *lpdata, size_t datalen);
+void D2CSClientJoinGameRequest(const void *lpdata, size_t datalen);
 
 /* by callback function */
 BOOL D2GSCBFindPlayerToken(LPCSTR lpCharName, DWORD dwToken, WORD wGameId,
@@ -50,6 +51,8 @@ void D2GSCBGetDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCharName,
 void D2GSCBSaveDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCharName,
 					LPCSTR lpAccountName, LPVOID lpSaveData,
 					DWORD dwSize, PLAYERDATA PlayerData);
+BOOL D2GSGetAccountName(LPCSTR lpCharName, LPSTR lpAccountName,
+					size_t accountNameSize);
 void D2GSWriteCharInfoFile(LPCSTR lpAccountName, LPCSTR lpCharName,
 					WORD wCharClass, DWORD dwCharLevel, DWORD dwExpLow,
 					WORD wCharStatus, LPCSTR lpCharPortrait);
@@ -58,8 +61,8 @@ void D2GSUpdateCharacterLadder(LPCSTR lpCharName, WORD wCharClass, DWORD dwCharL
 void D2GSLoadComplete(WORD wGameId, LPCSTR lpCharName, BOOL bExpansion);
 
 /* by d2dbs */
-void D2DBSSaveDataReply(LPVOID *lpdata);
-void D2DBSGetDataReply(LPVOID *lpdata);
+void D2DBSSaveDataReply(const void *lpdata, size_t datalen);
+void D2DBSGetDataReply(const void *lpdata, size_t datalen);
 void D2GSSetCharLockStatus(LPCSTR lpAccountName, LPCSTR lpCharName, UCHAR *RealmName, DWORD CharLockStatus);
 void D2GSUnlockChar(LPCSTR lpAccountName, LPCSTR lpCharName);
 

@@ -9,6 +9,8 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
 #include <conio.h>
 #include "d2gelib/d2server.h"
 #include "d2gs.h"
@@ -40,11 +42,7 @@ static CLEANUP_RT_ITEM	*pCleanupRT = NULL;
 /********************************************************************************
  * Main procedure begins here
  ********************************************************************************/
-#ifdef _DEBUG
-int main(int argc, char **argv)
-#else
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInst, LPSTR lpCmdLine, int nCmdShow)
-#endif
+int main(void)
 {
 	DWORD	dwWait;
 
@@ -128,7 +126,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInst, LPSTR lpCmdLine, in
 		break;
 	}
 
-	/*DoCleanup();*/
+	DoCleanup();
 	return 0;
 
 } /* End of main() */
@@ -237,7 +235,8 @@ BOOL D2GSCheckRunning(void)
 int CleanupRoutineForServerMutex(void)
 {
 	if (!hD2GSMutex) return FALSE;
-	return CloseHandle(hD2GSMutex);
+	CloseServerMutex();
+	return TRUE;
 
 } /* End of CleanupRoutineServerMutex() */
 

@@ -5,8 +5,8 @@
 #include <time.h>
 #include <conio.h>
 #include <ctype.h>
-#include <string.h>
 #include <limits.h>
+#include <stdint.h>
 #include "d2gelib/d2server.h"
 #include "d2gs.h"
 #include "vars.h"
@@ -21,6 +21,7 @@
 #include "d2cs_d2gs_character.h"
 #include "d2dbs_d2gs_protocol.h"
 #include "utils.h"
+#include "versioncheck.h"
 
 
 static D2GSPARAM	d2gsparam;
@@ -32,6 +33,22 @@ static char desc_game_difficulty[][32] = {
 static char desc_char_class[][16] = {
 	"Ama", "Sor", "Nec", "Pal", "Bar", "Dur", "Ass"
 };
+
+static BOOL AppendPacketString(D2GSPACKET *packet, size_t *packetSize, LPCSTR value)
+{
+	size_t valueLength;
+	u_char *destination;
+
+	if (!packet || !packetSize || !value) return FALSE;
+	valueLength = strlen(value)+1;
+	if (*packetSize > sizeof(packet->data) || valueLength > sizeof(packet->data)-*packetSize)
+		return FALSE;
+	destination = packet->data+*packetSize;
+	CopyMemory(destination, value, valueLength);
+	str2lower(destination);
+	*packetSize += valueLength;
+	return TRUE;
+}
 
 
 /*********************************************************************
@@ -196,22 +213,22 @@ void D2GSHandleS2SPacket(D2GSPACKET *lpPacket)
 		case D2CS_D2GS_CREATEGAMEREQ:
 			if (bn_ntohs(lpcshead->size) <= sizeof(t_d2cs_d2gs_creategamereq))
 				return;		/* bad packet, drop it */
-			D2CSCreateEmptyGame((LPVOID)(lpPacket->data));
+			D2CSCreateEmptyGame(lpPacket->data, lpPacket->datalen);
 			break;
 		case D2CS_D2GS_JOINGAMEREQ:
 			if (bn_ntohs(lpcshead->size) <= sizeof(t_d2cs_d2gs_joingamereq))
 				return;		/* bad packet, drop it */
-			D2CSClientJoinGameRequest((LPVOID)(lpPacket->data));
+			D2CSClientJoinGameRequest(lpPacket->data, lpPacket->datalen);
 			break;
 		case D2CS_D2GS_AUTHREQ:
 			if (bn_ntohs(lpcshead->size) < sizeof(t_d2cs_d2gs_authreq))
 				return;		/* bad packet, drop it */
-			D2GSAuthreq((LPVOID)(lpPacket->data));
+			D2GSAuthreq(lpPacket->data, lpPacket->datalen);
 			break;
 		case D2CS_D2GS_AUTHREPLY:
 			if (bn_ntohs(lpcshead->size) < sizeof(t_d2cs_d2gs_authreply))
 				return;		/* bad packet, drop it */
-			D2GSAuthReply((LPVOID)(lpPacket->data));
+			D2GSAuthReply(lpPacket->data, lpPacket->datalen);
 			break;
 		case D2CS_D2GS_ECHOREQ:
 			if (bn_ntohs(lpcshead->size) < sizeof(t_d2cs_d2gs_echoreq))
@@ -228,12 +245,12 @@ void D2GSHandleS2SPacket(D2GSPACKET *lpPacket)
 		case D2DBS_D2GS_SAVE_DATA_REPLY:
 			if (bn_ntohs(lpdbshead->size) <= sizeof(t_d2dbs_d2gs_save_data_reply))
 				return;
-			D2DBSSaveDataReply((LPVOID)(lpPacket->data));
+			D2DBSSaveDataReply(lpPacket->data, lpPacket->datalen);
 			break;
 		case D2DBS_D2GS_GET_DATA_REPLY:
 			if (bn_ntohs(lpdbshead->size) <= sizeof(t_d2dbs_d2gs_get_data_reply))
 				return;
-			D2DBSGetDataReply((LPVOID)(lpPacket->data));
+			D2DBSGetDataReply(lpPacket->data, lpPacket->datalen);
 			break;
 		case D2DBS_D2GS_ECHOREQUEST:
 			if (bn_ntohs(lpdbshead->size) < sizeof(t_d2dbs_d2gs_echoreq))
@@ -252,18 +269,21 @@ void D2GSHandleS2SPacket(D2GSPACKET *lpPacket)
  * Purpose: D2GSAutherq
  * Return:  None
  *********************************************************************/
-void D2GSAuthreq(LPVOID *lpdata)
+void D2GSAuthreq(const void *lpdata, size_t datalen)
 {
 	UCHAR		RealmName[MAX_REALMNAME_LEN];
 	DWORD		seqno;
 	D2GSPACKET	packet;
 	t_d2cs_d2gs_authreq		*preq;
 	t_d2gs_d2cs_authreply	*preply;
+	size_t realmLength;
 
-	preq = (t_d2cs_d2gs_authreq *)(lpdata);
+	preq = (t_d2cs_d2gs_authreq *)lpdata;
 	/* get realm name */
-	CopyMemory(RealmName, preq+1, sizeof(RealmName));
-	RealmName[MAX_REALMNAME_LEN-1] = '\0';
+	ZeroMemory(RealmName, sizeof(RealmName));
+	realmLength = datalen - sizeof(*preq);
+	if (realmLength >= sizeof(RealmName)) realmLength = sizeof(RealmName)-1;
+	CopyMemory(RealmName, preq+1, realmLength);
 	strcpy(d2gsparam.realmname, RealmName);
 	/* get session number */
 	d2gsparam.sessionnum = bn_ntohl(preq->sessionnum);
@@ -273,7 +293,7 @@ void D2GSAuthreq(LPVOID *lpdata)
 	ZeroMemory(&packet, sizeof(packet));
 	preply = (t_d2gs_d2cs_authreply *)(packet.data);
 	preply->h.type   = bn_htons(D2GS_D2CS_AUTHREPLY);
-	preply->h.size   = bn_ntohs(sizeof(t_d2gs_d2cs_authreply));
+	preply->h.size   = bn_htons(sizeof(t_d2gs_d2cs_authreply));
 	preply->h.seqno  = bn_htonl(seqno);
 	preply->version  = bn_ntohl(D2GS_VERSION);
 	preply->checksum = bn_ntohl(D2GSGetCheckSum());
@@ -288,11 +308,12 @@ void D2GSAuthreq(LPVOID *lpdata)
  * Purpose: D2GSAutherq
  * Return:  None
  *********************************************************************/
-void D2GSAuthReply(LPVOID *lpdata)
+void D2GSAuthReply(const void *lpdata, size_t datalen)
 {
 	t_d2cs_d2gs_authreply	*preq;
 
-	preq = (t_d2cs_d2gs_authreply *)(lpdata);
+	(void)datalen;
+	preq = (t_d2cs_d2gs_authreply *)lpdata;
 	if (preq->reply) {
 		/* error occur, disconnect */
 		CloseConnectionToD2CS();
@@ -322,6 +343,7 @@ void D2GSSetD2CSMaxGameNumber(DWORD maxgamenum)
 	preply->h.size  = bn_htons(sizeof(t_d2gs_d2cs_setgsinfo));
 	preply->h.seqno = bn_htonl(D2GSGetSequence());
 	preply->maxgame = bn_htonl(d2gsconf.gsmaxgames);
+	preply->gameflag = bn_htonl(0);
 	packet.datalen  = sizeof(t_d2gs_d2cs_setgsinfo);
 	packet.peer     = PACKET_PEER_SEND_TO_D2CS;
 	D2GSNetSendPacket(&packet);
@@ -368,19 +390,22 @@ void D2XSEchoReply(int peer)
  * Purpose: to create a new empty game on GE
  * Return: None
  *********************************************************************/
-void D2CSCreateEmptyGame(LPVOID *lpdata)
+void D2CSCreateEmptyGame(const void *lpdata, size_t datalen)
 {
 	UCHAR		GameName[MAX_GAMENAME_LEN];
 	DWORD		dwGameFlag;
-	WORD		wGameId;
+	WORD		wGameId = 0;
 	DWORD		seqno;
 	D2GSPACKET	packet;
 	t_d2cs_d2gs_creategamereq	*preq;
 	t_d2gs_d2cs_creategamereply	*preply;
+	size_t gameNameLength;
 
-	preq = (t_d2cs_d2gs_creategamereq *)(lpdata);
-	CopyMemory(GameName, preq+1, sizeof(GameName));
-	GameName[MAX_GAMENAME_LEN-1] = '\0';
+	preq = (t_d2cs_d2gs_creategamereq *)lpdata;
+	ZeroMemory(GameName, sizeof(GameName));
+	gameNameLength = datalen - sizeof(*preq);
+	if (gameNameLength >= sizeof(GameName)) gameNameLength = sizeof(GameName)-1;
+	CopyMemory(GameName, preq+1, gameNameLength);
 	if (strlen(GameName)<=0) return;
 	seqno = bn_ntohl(preq->h.seqno);
 	
@@ -389,11 +414,16 @@ void D2CSCreateEmptyGame(LPVOID *lpdata)
 
 	dwGameFlag = 0x04;
 	if (preq->expansion) dwGameFlag |= 0x100000;
+	if (preq->ladder)    dwGameFlag |= 0x200000;
 	if (preq->hardcore)  dwGameFlag |= 0x800;
 	if (preq->difficulty>2) preq->difficulty = 0;
 	dwGameFlag |= ((preq->difficulty) << 0x0c);
 	if (D2GSIsActive()) {
-		if (D2GSGetCurrentGameNumber()>=(int)(d2gsconf.gsmaxgames)) {
+		if (preq->expansion && !VersionCheckHasExpansionData()) {
+			D2GSEventLog("D2CSCreateEmptyGame", "Expansion game rejected because D2Exp.mpq is unavailable");
+			preply->result = bn_htonl(D2GS_D2CS_CREATEGAME_FAILED);
+		}
+		else if (D2GSGetCurrentGameNumber()>=(int)(d2gsconf.gsmaxgames)) {
 			D2GSEventLog("D2CSCreateEmptyGame", "Reach max game number");
 			preply->result = bn_htonl(D2GS_D2CS_CREATEGAME_FAILED);
 		}
@@ -432,32 +462,44 @@ void D2CSCreateEmptyGame(LPVOID *lpdata)
  * Purpose: to deal with client join game request
  * Return: None
  *********************************************************************/
-void D2CSClientJoinGameRequest(LPVOID *lpdata)
+void D2CSClientJoinGameRequest(const void *lpdata, size_t datalen)
 {
 	UCHAR		CharName[MAX_CHARNAME_LEN];
 	UCHAR		AcctName[MAX_ACCTNAME_LEN];
-	UCHAR		*ptr;
+	UCHAR		*ptr = NULL;
 	WORD		wGameId;
 	DWORD		dwToken;
-	D2GAMEINFO	*lpGame;
-	D2CHARINFO	*lpChar;
+	D2GAMEINFO	*lpGame = NULL;
+	D2CHARINFO	*lpChar = NULL;
 	D2GSPACKET	packet;
-	t_d2cs_d2gs_joingamereq		*preq;
-	t_d2gs_d2cs_joingamereply	*preply;
+	t_d2cs_d2gs_joingamereq		*preq = NULL;
+	t_d2gs_d2cs_joingamereply	*preply = NULL;
 	DWORD		result;
+	size_t		payloadLength, charNameLength, accountLength;
+	UCHAR		*terminator;
 
 	if (!lpdata) return;
 
 	/* get out parameter */
-	preq = (t_d2cs_d2gs_joingamereq *)(lpdata);
+	preq = (t_d2cs_d2gs_joingamereq *)lpdata;
 	wGameId = bn_ntohl(preq->gameid);
 	dwToken = bn_ntohl(preq->token);
+	payloadLength = datalen - sizeof(*preq);
 	ptr = (UCHAR *)(preq+1);
-	CopyMemory(CharName, ptr, sizeof(CharName));
-	CharName[MAX_CHARNAME_LEN-1] = '\0';
-	ptr += (strlen(CharName)+1);
-	CopyMemory(AcctName, ptr, sizeof(AcctName));
-	AcctName[MAX_ACCTNAME_LEN-1] = '\0';
+	terminator = memchr(ptr, '\0', payloadLength);
+	if (!terminator) return;
+	charNameLength = terminator - ptr;
+	if (!charNameLength || charNameLength >= sizeof(CharName)) return;
+	ZeroMemory(CharName, sizeof(CharName));
+	CopyMemory(CharName, ptr, charNameLength);
+	payloadLength -= charNameLength + 1;
+	ptr = terminator + 1;
+	terminator = memchr(ptr, '\0', payloadLength);
+	if (!terminator) return;
+	accountLength = terminator - ptr;
+	if (!accountLength || accountLength >= sizeof(AcctName)) return;
+	ZeroMemory(AcctName, sizeof(AcctName));
+	CopyMemory(AcctName, ptr, accountLength);
 
 	/* reset reply packet */
 	ZeroMemory(&packet, sizeof(packet));
@@ -635,6 +677,7 @@ void D2GSCBEnterGame(WORD wGameId, LPCSTR lpCharName, WORD wCharClass,
 	D2GSPACKET		packet;
 	t_d2gs_d2cs_updategameinfo	*pUpdateInfo;
 	BOOL			entergame;
+	size_t			packetSize;
 
 	if (!lpCharName) return;
 
@@ -692,17 +735,19 @@ void D2GSCBEnterGame(WORD wGameId, LPCSTR lpCharName, WORD wCharClass,
 
 	/* send update info to D2CS */
 	if (entergame) {
+		packetSize = sizeof(t_d2gs_d2cs_updategameinfo)+strlen(lpCharName)+1;
+		if (packetSize > sizeof(packet.data) || packetSize > UINT16_MAX) return;
 		ZeroMemory(&packet, sizeof(packet));
 		pUpdateInfo = (t_d2gs_d2cs_updategameinfo *)(packet.data);
 		pUpdateInfo->h.type  = bn_htons(D2GS_D2CS_UPDATEGAMEINFO);
-		pUpdateInfo->h.size  = bn_htons(sizeof(t_d2gs_d2cs_updategameinfo)+strlen(lpCharName)+1);
+		pUpdateInfo->h.size  = bn_htons((bn_short)packetSize);
 		pUpdateInfo->h.seqno = bn_htonl(D2GSGetSequence());
 		pUpdateInfo->flag    = bn_htonl(D2GS_D2CS_UPDATEGAMEINFO_FLAG_ENTER);
 		pUpdateInfo->gameid  = bn_htonl(wGameId);
 		pUpdateInfo->charlevel = bn_htonl(dwCharLevel);
 		pUpdateInfo->charclass = bn_htons(wCharClass);
 		strcpy((packet.data)+sizeof(t_d2gs_d2cs_updategameinfo), lpCharName);
-		packet.datalen = sizeof(t_d2gs_d2cs_updategameinfo)+strlen(lpCharName)+1;
+		packet.datalen = (u_short)packetSize;
 		packet.peer    = PACKET_PEER_SEND_TO_D2CS;
 		D2GSNetSendPacket(&packet);
 	}
@@ -730,6 +775,7 @@ void D2GSCBLeaveGame(LPGAMEDATA lpGameData, WORD wGameId, WORD wCharClass,
 	t_d2gs_d2cs_updategameinfo	*pUpdateInfo;
 	DWORD			dwEnterGame;
 	DWORD			CharLockStatus;
+	size_t			packetSize;
 
 	EnterCriticalSection(&csGameList);
 
@@ -781,17 +827,19 @@ void D2GSCBLeaveGame(LPGAMEDATA lpGameData, WORD wGameId, WORD wCharClass,
 
 	/* send update info to D2CS */
 	if (dwEnterGame) {
+		packetSize = sizeof(t_d2gs_d2cs_updategameinfo)+strlen(lpCharName)+1;
+		if (packetSize > sizeof(packet.data) || packetSize > UINT16_MAX) return;
 		ZeroMemory(&packet, sizeof(packet));
 		pUpdateInfo = (t_d2gs_d2cs_updategameinfo *)(packet.data);
 		pUpdateInfo->h.type  = bn_htons(D2GS_D2CS_UPDATEGAMEINFO);
-		pUpdateInfo->h.size  = bn_htons(sizeof(t_d2gs_d2cs_updategameinfo)+strlen(lpCharName)+1);
+		pUpdateInfo->h.size  = bn_htons((bn_short)packetSize);
 		pUpdateInfo->h.seqno = bn_htonl(D2GSGetSequence());
 		pUpdateInfo->flag    = bn_htonl(D2GS_D2CS_UPDATEGAMEINFO_FLAG_LEAVE);
 		pUpdateInfo->gameid  = bn_htonl(wGameId);
 		pUpdateInfo->charlevel = bn_htonl(dwCharLevel);
 		pUpdateInfo->charclass = bn_htons(wCharClass);
 		strcpy((packet.data)+sizeof(t_d2gs_d2cs_updategameinfo), lpCharName);
-		packet.datalen = sizeof(t_d2gs_d2cs_updategameinfo)+strlen(lpCharName)+1;
+		packet.datalen = (u_short)packetSize;
 		packet.peer    = PACKET_PEER_SEND_TO_D2CS;
 		D2GSNetSendPacket(&packet);
 	}
@@ -857,6 +905,7 @@ void D2GSCBUpdateGameInformation(WORD wGameId, LPCSTR lpCharName,
 	D2CHARINFO		*lpChar;
 	D2GSPACKET		packet;
 	t_d2gs_d2cs_updategameinfo	*pUpdateInfo;
+	size_t			packetSize;
 
 	EnterCriticalSection(&csGameList);
 	lpGame = D2GSFindGameInfoByGameId(wGameId);
@@ -870,17 +919,19 @@ void D2GSCBUpdateGameInformation(WORD wGameId, LPCSTR lpCharName,
 
 	LeaveCriticalSection(&csGameList);
 
+	packetSize = sizeof(t_d2gs_d2cs_updategameinfo)+strlen(lpCharName)+1;
+	if (packetSize > sizeof(packet.data) || packetSize > UINT16_MAX) return;
 	ZeroMemory(&packet, sizeof(packet));
 	pUpdateInfo = (t_d2gs_d2cs_updategameinfo *)(packet.data);
 	pUpdateInfo->h.type  = bn_htons(D2GS_D2CS_UPDATEGAMEINFO);
-	pUpdateInfo->h.size  = bn_htons(sizeof(t_d2gs_d2cs_updategameinfo)+strlen(lpCharName)+1);
+	pUpdateInfo->h.size  = bn_htons((bn_short)packetSize);
 	pUpdateInfo->h.seqno = bn_htonl(D2GSGetSequence());
 	pUpdateInfo->flag    = bn_htonl(D2GS_D2CS_UPDATEGAMEINFO_FLAG_UPDATE);
 	pUpdateInfo->gameid  = bn_htonl(wGameId);
 	pUpdateInfo->charlevel = bn_htonl(dwCharLevel);
 	pUpdateInfo->charclass = bn_htons(wCharClass);
 	strcpy((packet.data)+sizeof(t_d2gs_d2cs_updategameinfo), lpCharName);
-	packet.datalen = sizeof(t_d2gs_d2cs_updategameinfo)+strlen(lpCharName)+1;
+	packet.datalen = (u_short)packetSize;
 	packet.peer    = PACKET_PEER_SEND_TO_D2CS;
 	D2GSNetSendPacket(&packet);
 
@@ -894,6 +945,31 @@ void D2GSCBUpdateGameInformation(WORD wGameId, LPCSTR lpCharName,
 
 
 /*********************************************************************
+ * Purpose: resolve the account omitted by early callback ABIs
+ * Return: TRUE if the character was found
+ *********************************************************************/
+BOOL D2GSGetAccountName(LPCSTR lpCharName, LPSTR lpAccountName,
+				size_t accountNameSize)
+{
+	D2CHARINFO *lpCharInfo;
+	BOOL found;
+
+	if (!lpCharName || !lpAccountName || !accountNameSize) return FALSE;
+	lpAccountName[0] = '\0';
+	found = FALSE;
+	EnterCriticalSection(&csGameList);
+	lpCharInfo = (D2CHARINFO*)charlist_getdata(lpCharName, CHARLIST_GET_CHARINFO);
+	if (lpCharInfo && !IsBadReadPtr(lpCharInfo, sizeof(D2CHARINFO))) {
+		strncpy(lpAccountName, lpCharInfo->AcctName, accountNameSize-1);
+		lpAccountName[accountNameSize-1] = '\0';
+		found = TRUE;
+	}
+	LeaveCriticalSection(&csGameList);
+	return found;
+}
+
+
+/*********************************************************************
  * Purpose: GetDatabaseCharacter
  * Return:  None
  *********************************************************************/
@@ -902,8 +978,7 @@ void D2GSCBGetDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCharName,
 {
 	D2GSPACKET						packet;
 	t_d2gs_d2dbs_get_data_request	*preq;
-	u_char							*ptr;
-	u_short							size;
+	size_t							size;
 	DWORD							seqno;
 	D2GAMEINFO						*lpGameInfo;
 	D2CHARINFO						*lpCharInfo;
@@ -915,6 +990,7 @@ void D2GSCBGetDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCharName,
 	if (D2GSInsertGetDataRequest((UCHAR*)lpAccountName, (UCHAR*)lpCharName, dwClientId, seqno)) {
 		D2GSEventLog("D2GSCBGetDatabaseCharacter",
 			"Failed insert get data request for %s(*%s)", lpCharName, lpAccountName);
+		LeaveCriticalSection(&csGameList);
 		D2GSSendDatabaseCharacter(dwClientId, NULL, 0, 0, TRUE, 0, NULL);
 		return;
 	}
@@ -930,6 +1006,7 @@ void D2GSCBGetDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCharName,
 		D2GSEventLog("D2GSCBGetDatabaseCharacter",
 			"Call back to get save for %s(*%s), but the char or the game is invalid",
 			lpCharName, lpAccountName);
+		LeaveCriticalSection(&csGameList);
 		D2GSSendDatabaseCharacter(dwClientId, NULL, 0, 0, TRUE, 0, NULL);
 		return;
 	}
@@ -940,24 +1017,14 @@ void D2GSCBGetDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCharName,
 	preq = (t_d2gs_d2dbs_get_data_request*)(packet.data);
 	ZeroMemory(&packet, sizeof(packet));
 	size = sizeof(t_d2gs_d2dbs_get_data_request);
-	ptr = packet.data + size;
-	strcpy(ptr, lpAccountName);
-	str2lower(ptr);
-	size += (strlen(lpAccountName)+1);
-	ptr  += (strlen(lpAccountName)+1);
-	strcpy(ptr, lpCharName);
-	str2lower(ptr);
-	size += (strlen(lpCharName)+1);
-	ptr  += (strlen(lpCharName)+1);
-	strcpy(ptr, d2gsparam.realmname);
-	str2lower(ptr);
-	size += (strlen(d2gsparam.realmname)+1);
-	ptr  += (strlen(d2gsparam.realmname)+1);
+	if (!AppendPacketString(&packet, &size, lpAccountName) ||
+		!AppendPacketString(&packet, &size, lpCharName) ||
+		!AppendPacketString(&packet, &size, (LPCSTR)d2gsparam.realmname)) return;
 	preq->datatype = bn_htons(D2GS_DATA_CHARSAVE);
 	preq->h.type   = bn_htons(D2GS_D2DBS_GET_DATA_REQUEST);
-	preq->h.size   = bn_htons(size);
+	preq->h.size   = bn_htons((bn_short)size);
 	preq->h.seqno  = bn_htonl(seqno);
-	packet.datalen = size;
+	packet.datalen = (u_short)size;
 	packet.peer    = PACKET_PEER_SEND_TO_D2DBS;
 	D2GSNetSendPacket(&packet);
 	D2GSEventLog("D2GSCBGetDatabaseCharacter",
@@ -978,35 +1045,28 @@ void D2GSCBSaveDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCharName,
 {
 	D2GSPACKET						packet;
 	t_d2gs_d2dbs_save_data_request	*preq;
-	u_short							size;
-	u_char							*ptr, *pdata;
+	size_t							size, dataSize;
+	u_char							*pdata;
 
 	preq = (t_d2gs_d2dbs_save_data_request *)(packet.data);
 	pdata = (char *)lpSaveData;
 
 	ZeroMemory(&packet, sizeof(packet));
 	size = sizeof(t_d2gs_d2dbs_save_data_request);
-	ptr = packet.data + size;
-	strcpy(ptr, lpAccountName);
-	str2lower(ptr);
-	size += (strlen(lpAccountName)+1);
-	ptr  += (strlen(lpAccountName)+1);
-	strcpy(ptr, lpCharName);
-	str2lower(ptr);
-	size += (strlen(lpCharName)+1);
-	ptr  += (strlen(lpCharName)+1);
-	strcpy(ptr, d2gsparam.realmname);
-	str2lower(ptr);
-	size += (strlen(d2gsparam.realmname)+1);
-	ptr  += (strlen(d2gsparam.realmname)+1);
-	CopyMemory(ptr, pdata+sizeof(short), dwSize-sizeof(short));
-	size += (u_short)(dwSize-sizeof(short));
+	if (!AppendPacketString(&packet, &size, lpAccountName) ||
+		!AppendPacketString(&packet, &size, lpCharName) ||
+		!AppendPacketString(&packet, &size, (LPCSTR)d2gsparam.realmname)) return;
+	if (dwSize < sizeof(short)) return;
+	dataSize = dwSize-sizeof(short);
+	if (dataSize > UINT16_MAX || dataSize > sizeof(packet.data)-size) return;
+	CopyMemory(packet.data+size, pdata+sizeof(short), dataSize);
+	size += dataSize;
 	preq->datatype = bn_htons(D2GS_DATA_CHARSAVE);
-	preq->datalen  = bn_htons((u_short)(dwSize-sizeof(short)));
+	preq->datalen  = bn_htons((u_short)dataSize);
 	preq->h.type   = bn_htons(D2GS_D2DBS_SAVE_DATA_REQUEST);
-	preq->h.size   = bn_htons(size);
+	preq->h.size   = bn_htons((bn_short)size);
 	preq->h.seqno  = bn_htonl(D2GSGetSequence());
-	packet.datalen = size;
+	packet.datalen = (u_short)size;
 	packet.peer    = PACKET_PEER_SEND_TO_D2DBS;
 	D2GSNetSendPacket(&packet);
 	D2GSEventLog("D2GSCBSaveDatabaseCharacter", "Save CHARSAVE for %s(*%s)",
@@ -1030,11 +1090,15 @@ void D2GSWriteCharInfoFile(LPCSTR lpAccountName, LPCSTR lpCharName,
 	t_d2charinfo_header		*lpheader;
 	t_d2charinfo_portrait	*lpportrait;
 	t_d2charinfo_summary	*lpsummary;
-	DWORD					create_time;
+	BYTE					*portraitBytes;
+	BYTE					*portraitEnd;
+	size_t					portraitLength;
+	bn_int					create_time;
+	time_t					current_time;
 	D2GSPACKET						packet;
 	t_d2gs_d2dbs_save_data_request	*preq;
-	u_short							size;
-	u_char							*ptr, *pdata;
+	size_t							size;
+	u_char							*pdata;
 
 	lpCharInfo = (D2CHARINFO*)charlist_getdata(lpCharName, CHARLIST_GET_CHARINFO);
 	if (!lpCharInfo) {
@@ -1042,10 +1106,15 @@ void D2GSWriteCharInfoFile(LPCSTR lpAccountName, LPCSTR lpCharName,
 			lpCharName, lpAccountName);
 		return;
 	}
-	create_time = lpCharInfo->CharCreateTime;
+	if (lpCharInfo->CharCreateTime < 0 || lpCharInfo->CharCreateTime > UINT32_MAX) {
+		D2GSEventLog("D2GSWriteCharInfoFile", "Character creation time is outside the protocol range");
+		return;
+	}
+	create_time = (bn_int)lpCharInfo->CharCreateTime;
 
 	lpheader   = &(d2charinfo.header);
 	lpportrait = &(d2charinfo.portrait);
+	portraitBytes = (BYTE *)lpportrait;
 	lpsummary  = &(d2charinfo.summary);
 	ZeroMemory(&d2charinfo, sizeof(t_d2charinfo_file));
 
@@ -1053,7 +1122,9 @@ void D2GSWriteCharInfoFile(LPCSTR lpAccountName, LPCSTR lpCharName,
 	lpheader->version   = D2CHARINFO_VERSION;
 	/*create_time = time(NULL);*/
 	lpheader->create_time = create_time;
-	lpheader->last_time = time(NULL);
+	current_time = time(NULL);
+	if (current_time < 0 || current_time > UINT32_MAX) return;
+	lpheader->last_time = (bn_int)current_time;
 	strncpy(lpheader->account, lpAccountName, sizeof(lpheader->account)-1);
 	strncpy(lpheader->charname, lpCharName, sizeof(lpheader->charname)-1);
 	/*str2lower(lpheader->account);
@@ -1065,19 +1136,25 @@ void D2GSWriteCharInfoFile(LPCSTR lpAccountName, LPCSTR lpCharName,
 	lpsummary->charclass  = (DWORD)wCharClass;
 	lpsummary->charstatus = (DWORD)wCharStatus;
 
-	if ( sizeof(d2charinfo.portrait) < (strlen(lpCharPortrait)+1) )
-	{
-		CopyMemory(lpportrait, lpCharPortrait, sizeof(d2charinfo.portrait));
+	portraitEnd = memchr(lpCharPortrait, '\0', sizeof(d2charinfo.portrait));
+	if (!portraitEnd) {
 		D2GSEventLog("D2GSWriteCharInfoFile",
-			"Portrait data too large for %s(%s) as %d",
-			lpCharName, lpAccountName, strlen(lpCharPortrait)+1);
-	} else {
-		CopyMemory(lpportrait, lpCharPortrait, (strlen(lpCharPortrait)+1));
+			"Portrait data too large for %s(*%s)", lpCharName, lpAccountName);
+		return;
 	}
+	portraitLength = portraitEnd-(BYTE *)lpCharPortrait;
+	CopyMemory(lpportrait, lpCharPortrait, portraitLength+1);
 
 	/* to check if the portrait if valid */
-	if ( (lpportrait->level==0) || (lpportrait->level>99)
-		|| ((lpportrait->class-1)!=(BYTE)wCharClass) )
+	if (portraitLength >= D2CHARINFO_PORTRAIT_LEGACY_BASE_SIZE-1) {
+		if (!portraitBytes[35] || portraitBytes[35] > 99 ||
+				portraitBytes[18]-1 != (BYTE)wCharClass) {
+			D2GSEventLog("D2GSWriteCharInfoFile",
+				"Bad legacy portrait data for %s(*%s)", lpCharName, lpAccountName);
+			return;
+		}
+	} else if ( (lpportrait->level==0) || (lpportrait->level>99)
+		|| ((lpportrait->chclass-1)!=(BYTE)wCharClass) )
 	{
 		D2GSEventLog("D2GSWriteCharInfoFile",
 			"Bad Portrait data for %s(*%s)", lpCharName, lpAccountName);
@@ -1095,27 +1172,18 @@ void D2GSWriteCharInfoFile(LPCSTR lpAccountName, LPCSTR lpCharName,
 
 	ZeroMemory(&packet, sizeof(packet));
 	size = sizeof(t_d2gs_d2dbs_save_data_request);
-	ptr  = packet.data + sizeof(t_d2gs_d2dbs_save_data_request);
-	strcpy(ptr, lpAccountName);
-	str2lower(ptr);
-	size += (strlen(lpAccountName)+1);
-	ptr  += (strlen(lpAccountName)+1);
-	strcpy(ptr, lpCharName);
-	str2lower(ptr);
-	size += (strlen(lpCharName)+1);
-	ptr  += (strlen(lpCharName)+1);
-	strcpy(ptr, d2gsparam.realmname);
-	str2lower(ptr);
-	size += (strlen(d2gsparam.realmname)+1);
-	ptr  += (strlen(d2gsparam.realmname)+1);
-	CopyMemory(ptr, pdata, sizeof(d2charinfo));
+	if (!AppendPacketString(&packet, &size, lpAccountName) ||
+		!AppendPacketString(&packet, &size, lpCharName) ||
+		!AppendPacketString(&packet, &size, (LPCSTR)d2gsparam.realmname)) return;
+	if (sizeof(d2charinfo) > sizeof(packet.data)-size) return;
+	CopyMemory(packet.data+size, pdata, sizeof(d2charinfo));
 	size += sizeof(d2charinfo);
 	preq->datatype = bn_htons(D2GS_DATA_PORTRAIT);
 	preq->datalen  = bn_htons(sizeof(d2charinfo));
 	preq->h.type   = bn_htons(D2GS_D2DBS_SAVE_DATA_REQUEST);
-	preq->h.size   = bn_htons(size);
+	preq->h.size   = bn_htons((bn_short)size);
 	preq->h.seqno  = bn_htonl(D2GSGetSequence());
-	packet.datalen = size;
+	packet.datalen = (u_short)size;
 	packet.peer    = PACKET_PEER_SEND_TO_D2DBS;
 	D2GSNetSendPacket(&packet);
 	D2GSEventLog("D2GSWriteCharInfoFile",
@@ -1136,8 +1204,7 @@ void D2GSUpdateCharacterLadder(LPCSTR lpCharName, WORD wCharClass, DWORD dwCharL
 	D2CHARINFO					*lpCharInfo;
 	D2GSPACKET					packet;
 	t_d2gs_d2dbs_update_ladder	*preq;
-	u_short						size;
-	u_char						*ptr;
+	size_t						size;
 
 	lpCharInfo = (D2CHARINFO*)charlist_getdata(lpCharName, CHARLIST_GET_CHARINFO);
 	if (!lpCharInfo) {
@@ -1150,16 +1217,8 @@ void D2GSUpdateCharacterLadder(LPCSTR lpCharName, WORD wCharClass, DWORD dwCharL
 	preq = (t_d2gs_d2dbs_update_ladder *)(packet.data);
 	ZeroMemory(&packet, sizeof(packet));
 	size = sizeof(t_d2gs_d2dbs_update_ladder);
-	ptr = packet.data + size;
-
-	strcpy(ptr, lpCharName);
-	str2lower(ptr);
-	size += (strlen(lpCharName)+1);
-	ptr  += (strlen(lpCharName)+1);
-	strcpy(ptr, d2gsparam.realmname);
-	str2lower(ptr);
-	size += (strlen(d2gsparam.realmname)+1);
-	ptr  += (strlen(d2gsparam.realmname)+1);
+	if (!AppendPacketString(&packet, &size, lpCharName) ||
+		!AppendPacketString(&packet, &size, (LPCSTR)d2gsparam.realmname)) return;
 
 	preq->charlevel   = bn_htonl(dwCharLevel);
 	preq->charexplow  = bn_htonl(dwCharExpLow);
@@ -1167,9 +1226,9 @@ void D2GSUpdateCharacterLadder(LPCSTR lpCharName, WORD wCharClass, DWORD dwCharL
 	preq->charclass   = bn_htons(wCharClass);
 	preq->charstatus  = bn_htons(wCharStatus);
 	preq->h.type      = bn_htons(D2GS_D2DBS_UPDATE_LADDER);
-	preq->h.size      = bn_htons(size);
+	preq->h.size      = bn_htons((bn_short)size);
 	preq->h.seqno     = bn_htonl(D2GSGetSequence());
-	packet.datalen    = size;
+	packet.datalen    = (u_short)size;
 	packet.peer       = PACKET_PEER_SEND_TO_D2DBS;
 	D2GSNetSendPacket(&packet);
 	D2GSEventLog("D2GSUpdateCharacterLadder", "Update ladder for %s@%s",
@@ -1205,13 +1264,14 @@ void D2GSLoadComplete(WORD wGameId, LPCSTR lpCharName, BOOL bExpansion)
  * Purpose: D2DBSSaveDataReply
  * Return:  None
  *********************************************************************/
-void D2DBSSaveDataReply(LPVOID *lpdata)
+void D2DBSSaveDataReply(const void *lpdata, size_t datalen)
 {
 	t_d2dbs_d2gs_save_data_reply	*preply;
 	u_char							*lpCharName;
 
 	preply = (t_d2dbs_d2gs_save_data_reply*)lpdata;
 	lpCharName = (u_char*)lpdata + sizeof(t_d2dbs_d2gs_save_data_reply);
+	if (!memchr(lpCharName, '\0', datalen-sizeof(*preply))) return;
 	D2GSEventLog("D2DBSSaveDataReply",
 		"Save %s data to D2DBS for %s %s",
 		(preply->datatype)==D2GS_DATA_CHARSAVE ? "<CHARSAVE>" : "<CHARINFO>",
@@ -1224,7 +1284,7 @@ void D2DBSSaveDataReply(LPVOID *lpdata)
  * Purpose: D2DBSGetDataReply
  * Return:  None
  *********************************************************************/
-void D2DBSGetDataReply(LPVOID *lpdata)
+void D2DBSGetDataReply(const void *lpdata, size_t datalen)
 {
 	t_d2dbs_d2gs_get_data_reply		*preply;
 	DWORD							seqno;
@@ -1237,16 +1297,23 @@ void D2DBSGetDataReply(LPVOID *lpdata)
 	PLAYERINFO						PlayerInfo;
 	D2GAMEINFO						*lpGameInfo;
 	D2CHARINFO						*lpCharInfo;
+	u_char							*nameEnd;
+	size_t						payloadLength;
 
 	preply = (t_d2dbs_d2gs_get_data_reply*)lpdata;
 	switch(bn_ntohs(preply->datatype))
 	{
 	case D2GS_DATA_CHARSAVE:
 		pSaveData = (u_char*)lpdata + sizeof(t_d2dbs_d2gs_get_data_reply);
-		strncpy(CharName, pSaveData, MAX_CHARNAME_LEN-1);
-		CharName[MAX_CHARNAME_LEN-1] = '\0';
-		pSaveData += strlen(CharName)+1;
+		payloadLength = datalen - sizeof(*preply);
+		nameEnd = memchr(pSaveData, '\0', payloadLength);
+		if (!nameEnd || nameEnd-pSaveData >= MAX_CHARNAME_LEN) return;
+		ZeroMemory(CharName, sizeof(CharName));
+		CopyMemory(CharName, pSaveData, nameEnd-pSaveData);
+		payloadLength -= (nameEnd-pSaveData)+1;
+		pSaveData = nameEnd+1;
 		size = (DWORD)(bn_ntohs(preply->datalen));
+		if (size > payloadLength) return;
 		PlayerInfo.PlayerMark = 0xabcdef;
 		PlayerInfo.dwReserved = 0xfedcba;
 		/* find get data request in the list */
@@ -1339,32 +1406,20 @@ void D2GSSetCharLockStatus(LPCSTR lpAccountName, LPCSTR lpCharName,
 {
 	D2GSPACKET				packet;
 	t_d2gs_d2dbs_char_lock	*preq;
-	u_short					size;
-	u_char					*ptr;
+	size_t					size;
 
 	preq = (t_d2gs_d2dbs_char_lock *)(packet.data);
 	ZeroMemory(&packet, sizeof(packet));
 	size = sizeof(t_d2gs_d2dbs_char_lock);
-	ptr = packet.data + size;
-
-	strcpy(ptr, lpAccountName);
-	str2lower(ptr);
-	size += (strlen(lpAccountName)+1);
-	ptr  += (strlen(lpAccountName)+1);
-	strcpy(ptr, lpCharName);
-	str2lower(ptr);
-	size += (strlen(lpCharName)+1);
-	ptr  += (strlen(lpCharName)+1);
-	strcpy(ptr, RealmName);
-	str2lower(ptr);
-	size += (strlen(RealmName)+1);
-	ptr  += (strlen(RealmName)+1);
+	if (!AppendPacketString(&packet, &size, lpAccountName) ||
+		!AppendPacketString(&packet, &size, lpCharName) ||
+		!AppendPacketString(&packet, &size, (LPCSTR)RealmName)) return;
 
 	preq->lockstatus = bn_htonl(CharLockStatus);
 	preq->h.type     = bn_htons(D2GS_D2DBS_CHAR_LOCK);
-	preq->h.size     = bn_htons(size);
+	preq->h.size     = bn_htons((bn_short)size);
 	preq->h.seqno    = bn_htonl(D2GSGetSequence());
-	packet.datalen   = size;
+	packet.datalen   = (u_short)size;
 	packet.peer      = PACKET_PEER_SEND_TO_D2DBS;
 	D2GSNetSendPacket(&packet);
 	D2GSEventLog("D2GSSetCharLockStatus",
