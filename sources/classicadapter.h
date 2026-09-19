@@ -5,6 +5,6 @@
 #include "callback.h"
 
 extern BOOL ClassicAdapterApply(D2GSCALLBACKABI *callbackAbi);
-extern void ClassicAdapterTraceNetwork(void);
+extern BOOL ClassicAdapterFinalize(void);
 
 #endif

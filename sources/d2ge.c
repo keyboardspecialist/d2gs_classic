@@ -134,10 +134,11 @@ int D2GEThreadInit(void)
 	gD2GSInfo.szVersion				= D2GS_VERSION_STRING;
 	gD2GSInfo.dwLibVersion			= D2GS_LIBRARY_VERSION;
 	gD2GSInfo.bIsNT					= d2gsconf.enablentmode;
-	if (gCallbackAbi == D2GS_CALLBACK_ABI_100 && gD2GSInfo.bIsNT) {
+	if ((gCallbackAbi == D2GS_CALLBACK_ABI_100 ||
+			gCallbackAbi == D2GS_CALLBACK_ABI_101) && gD2GSInfo.bIsNT) {
 		gD2GSInfo.bIsNT = FALSE;
 		D2GSEventLog("D2GEThreadInit",
-			"Disabling NT network mode for classic 1.00 compatibility");
+			"Disabling NT network mode for early classic compatibility");
 	}
 	gD2GSInfo.bEnablePatch			= d2gsconf.enablegepatch;
 	gD2GSInfo.fpEventLog			= D2GEEventLog;
@@ -267,9 +268,14 @@ DWORD WINAPI D2GEThread(LPVOID lpParameter)
 		D2GSEventLog("D2GEThread", "Game Server Thread Exit with %d", dwExitCode); 
 		SetEvent(hEvent);
 	} else if (dwRetval==WAIT_OBJECT_0) {
-		D2GSEventLog("D2GEThread", "Game Server Thread Start Successfully");
-		ClassicAdapterTraceNetwork();
-		bGERunning = TRUE;
+		if (!ClassicAdapterFinalize()) {
+			D2GSEventLog("D2GEThread",
+				"Failed finalizing the classic compatibility profile");
+			gD2GSInfo.bStop = TRUE;
+		} else {
+			D2GSEventLog("D2GEThread", "Game Server Thread Start Successfully");
+			bGERunning = TRUE;
+		}
 		SetEvent(hEvent);
 	} else {
 		D2GSEventLog("D2GEThread", "Wait Server Thread Returned %d", dwRetval);

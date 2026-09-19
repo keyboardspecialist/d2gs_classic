@@ -206,7 +206,11 @@ not one broad classic mode. Each supported build needs:
 
 Measured neighboring versions already demonstrate why this is necessary:
 1.06b, 1.07, 1.08, and 1.09b use 12 stack arguments for `fpLeaveGame`, while
-1.09d uses 13. Earlier 1.00-1.05 builds remain unmeasured and must not inherit
-either ABI by assumption. The current implementation has an explicit 1.09b
-profile and preserves the existing 1.09d profile; it does not yet claim support
-for the rest of the range.
+1.09d uses 13. The 1.00 and 1.01 profiles are lifecycle validated. Versions
+1.02-1.05 remain unmeasured and must not inherit either ABI by assumption. The
+current implementation has explicit 1.00, 1.01, and 1.09b profiles and
+preserves the existing 1.09d profile; it does not yet claim support for the
+rest of the range.
+
+The 1.01 analysis, implementation details, and complete lifecycle validation
+are recorded in `docs/classic-1.01-profile.md`.

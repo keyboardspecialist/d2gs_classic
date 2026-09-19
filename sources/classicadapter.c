@@ -21,31 +21,26 @@
 #define CLASSIC_100_INIT_EVENT_POINTER_RVA 0x436A
 #define CLASSIC_100_CLIENT_DESCRIPTOR_RVA 0x2AB4
 #define CLASSIC_100_CLIENT_EXPECTED_RVA 0x3194
-#define CLASSIC_100_D2GAME_RECV_GAME_IAT_RVA 0xA4AC8
-#define CLASSIC_100_D2GAME_RECV_CONTROL_IAT_RVA 0xA4AD4
-#define CLASSIC_100_D2NET_PARSER_THUNK_RVA 0x100A
-#define CLASSIC_100_D2NET_ACCEPT_THUNK_RVA 0x1050
-#define CLASSIC_100_D2NET_DELIVER_THUNK_RVA 0x1096
-#define CLASSIC_100_D2NET_PARSER_RVA 0x2100
-#define CLASSIC_100_D2NET_ACCEPT_RVA 0x21C0
-#define CLASSIC_100_D2NET_DELIVER_RVA 0x20E0
+#define CLASSIC_101_FOG_PREINIT_DIAGNOSTIC_RVA 0xD2D2
 #define SHA256_LENGTH 32
 
-typedef int (__stdcall * D2NETRECVFUNC)(void *buffer, int length);
-typedef int (__fastcall * D2NETPARSERFUNC)(BYTE *data, int length,
-	DWORD arg1, DWORD arg2, DWORD arg3, DWORD arg4, DWORD arg5, DWORD arg6);
-typedef int (__fastcall * D2NETACCEPTFUNC)(DWORD arg1, DWORD arg2);
-typedef int (__fastcall * D2NETDELIVERFUNC)(DWORD arg1, DWORD arg2,
-	DWORD arg3);
+typedef struct {
+	LPCSTR name;
+	LPCSTR enableVariable;
+	BYTE const *d2GameSha256;
+	BYTE const *d2ClientSha256;
+	BYTE const *d2CommonSha256;
+	BYTE const *d2NetSha256;
+	BYTE const *d2WinSha256;
+	BYTE const *fogSha256;
+	BYTE const *clientDescriptor;
+	BYTE const *clientPointer;
+	DWORD const *databaseReturnRvas;
+	DWORD databaseReturnCount;
+	D2GSCALLBACKABI callbackAbi;
+} CLASSICEARLYPROFILE;
 
-static BOOL gClassic100Active;
-static D2NETRECVFUNC gClassic100RecvGame;
-static D2NETRECVFUNC gClassic100RecvControl;
-static D2NETPARSERFUNC gClassic100Parser;
-static D2NETACCEPTFUNC gClassic100Accept;
-static D2NETDELIVERFUNC gClassic100Deliver;
-static LONG gClassic100RecvGameSeen;
-static LONG gClassic100RecvControlSeen;
+static CLASSICEARLYPROFILE const *gClassicEarlyProfile;
 
 static BYTE const D2ServerSha256[SHA256_LENGTH] = {
 	0xC6, 0xE2, 0x08, 0xD4, 0x63, 0x0F, 0x9E, 0x7F,
@@ -106,6 +101,62 @@ static BYTE const Classic100D2CommonSha256[SHA256_LENGTH] = {
 	0xC7, 0x3A, 0x3F, 0x35, 0x95, 0xE0, 0x54, 0x4C
 };
 
+static BYTE const Classic100D2NetSha256[SHA256_LENGTH] = {
+	0x78, 0x76, 0xCC, 0x8D, 0xFE, 0x77, 0x91, 0x02,
+	0xF1, 0x21, 0x8A, 0x5C, 0x73, 0x52, 0xA6, 0x96,
+	0x2C, 0x95, 0xE3, 0x66, 0xDD, 0xD5, 0x24, 0xE4,
+	0x54, 0x33, 0x2F, 0xAF, 0x95, 0x54, 0xD0, 0xFC
+};
+
+static BYTE const Classic101FogSha256[SHA256_LENGTH] = {
+	0xE3, 0xDE, 0x58, 0x3C, 0xDF, 0xE7, 0xA6, 0x29,
+	0x83, 0xDF, 0x8B, 0x7D, 0xB1, 0x4F, 0xB9, 0x5B,
+	0xE6, 0x8F, 0xE5, 0xB3, 0x6C, 0x7E, 0x99, 0x5B,
+	0x48, 0x53, 0x68, 0xFE, 0xAB, 0x62, 0x65, 0x66
+};
+
+static BYTE const Classic101D2GameSha256[SHA256_LENGTH] = {
+	0xBA, 0x2A, 0x57, 0x3C, 0x7E, 0x80, 0x2F, 0x1B,
+	0x5B, 0xA8, 0x20, 0x9B, 0x70, 0x1F, 0x7D, 0xEE,
+	0x0D, 0x95, 0x6A, 0x16, 0xFE, 0x0C, 0x9E, 0x6F,
+	0x72, 0x82, 0xDF, 0x18, 0xBB, 0xAC, 0x87, 0x56
+};
+
+static BYTE const Classic101D2ClientSha256[SHA256_LENGTH] = {
+	0x1F, 0x77, 0x99, 0xA0, 0x4E, 0x15, 0xC2, 0xC7,
+	0xB2, 0x02, 0x8E, 0xF7, 0x9B, 0x0E, 0xCF, 0x81,
+	0x64, 0x0D, 0x07, 0x5C, 0xB7, 0x45, 0xBB, 0x5A,
+	0x03, 0xF9, 0x26, 0x1E, 0xBB, 0xF6, 0x7A, 0x68
+};
+
+static BYTE const Classic101D2CommonSha256[SHA256_LENGTH] = {
+	0xEE, 0x2C, 0x05, 0xC8, 0xB0, 0x67, 0x18, 0x81,
+	0xF3, 0x69, 0x03, 0xBE, 0x3D, 0x55, 0x3D, 0x94,
+	0xE0, 0x79, 0x9B, 0x61, 0x32, 0x20, 0xAF, 0x2C,
+	0x5F, 0x1B, 0x16, 0x1F, 0x82, 0x4C, 0x83, 0xFD
+};
+
+static BYTE const Classic101D2NetSha256[SHA256_LENGTH] = {
+	0x33, 0xCD, 0x75, 0x70, 0x45, 0x0D, 0xD5, 0x82,
+	0xEA, 0x5A, 0x70, 0x77, 0xB6, 0x35, 0x72, 0xD8,
+	0x2D, 0xF4, 0x4F, 0x36, 0x88, 0x28, 0xA5, 0xE1,
+	0x96, 0x50, 0xB9, 0xE6, 0x6D, 0x81, 0xB8, 0xC5
+};
+
+static BYTE const Classic101D2WinSha256[SHA256_LENGTH] = {
+	0xB6, 0xA9, 0x28, 0xE4, 0xA5, 0x29, 0xD5, 0x5D,
+	0x37, 0x78, 0xA0, 0xCD, 0xCD, 0x80, 0x96, 0xF1,
+	0xAB, 0x24, 0xC1, 0xF3, 0xC6, 0x03, 0xF1, 0xCB,
+	0xBF, 0x24, 0x04, 0x15, 0xA9, 0x97, 0x79, 0x0D
+};
+
+static BYTE const Classic101FogPreinitDiagnosticExpected[] = {
+	0xE8, 0x63, 0x3F, 0xFF, 0xFF
+};
+static BYTE const Classic101FogPreinitDiagnosticReplacement[] = {
+	0x90, 0x90, 0x90, 0x90, 0x90
+};
+
 static BYTE const Classic109FogExpected[] = {
 	0xF6, 0xC1, 0x03,
 	0xB8, 0x02, 0x00, 0x00, 0x00,
@@ -147,13 +198,37 @@ static BYTE const InitEventSavedPointer[] = {0xFF, 0x76, 0x14};
 static BYTE const InitEventCanonicalPointer[] = {0xFF, 0x70, 0x14};
 static BYTE const ClientDescriptorExpected[] = {0xE1, 0x81, 0x00, 0x00};
 static BYTE const Classic100ClientDescriptor[] = {0x9C, 0x5F, 0x01, 0x00};
+static BYTE const Classic101ClientDescriptor[] = {0xDC, 0x5B, 0x01, 0x00};
 static BYTE const ClientPointerExpected[] = {0x88, 0x0A, 0xBB, 0x6F};
 static BYTE const Classic100ClientPointer[] = {0xA8, 0xEC, 0x12, 0x10};
+static BYTE const Classic101ClientPointer[] = {0xD0, 0xEA, 0x12, 0x10};
 static DWORD const Classic100DatabaseReturnRvas[] = {
 	0x5710, 0x57A2, 0x57E2, 0x5819, 0x584F, 0x58A7
 };
-static BYTE const Classic100DatabaseReturnExpected[] = {0xC2, 0x14, 0x00};
-static BYTE const Classic100DatabaseReturnReplacement[] = {0xC2, 0x1C, 0x00};
+static DWORD const Classic101DatabaseReturnRvas[] = {
+	0x5790, 0x5822, 0x5862, 0x5899, 0x5924
+};
+static BYTE const ClassicDatabaseReturnExpected[] = {0xC2, 0x14, 0x00};
+static BYTE const ClassicDatabaseReturnReplacement[] = {0xC2, 0x1C, 0x00};
+static CLASSICEARLYPROFILE const Classic100Profile = {
+	"1.00", "D2GS_EXPERIMENTAL_CLASSIC_100",
+	Classic100D2GameSha256, Classic100D2ClientSha256,
+	Classic100D2CommonSha256, Classic100D2NetSha256,
+	Classic100D2WinSha256, Classic100FogSha256,
+	Classic100ClientDescriptor, Classic100ClientPointer,
+	Classic100DatabaseReturnRvas, ARRAYSIZE(Classic100DatabaseReturnRvas),
+	D2GS_CALLBACK_ABI_100
+};
+
+static CLASSICEARLYPROFILE const Classic101Profile = {
+	"1.01", "D2GS_EXPERIMENTAL_CLASSIC_101",
+	Classic101D2GameSha256, Classic101D2ClientSha256,
+	Classic101D2CommonSha256, Classic101D2NetSha256,
+	Classic101D2WinSha256, Classic101FogSha256,
+	Classic101ClientDescriptor, Classic101ClientPointer,
+	Classic101DatabaseReturnRvas, ARRAYSIZE(Classic101DatabaseReturnRvas),
+	D2GS_CALLBACK_ABI_101
+};
 
 static BOOL HashFileSha256(LPCSTR fileName, BYTE hash[SHA256_LENGTH])
 {
@@ -246,204 +321,27 @@ static BOOL PatchBytes(HMODULE module, DWORD rva, BYTE const *replacement,
 	return TRUE;
 }
 
-static void TraceD2NetPacket(LPCSTR queue, void const *buffer, int length)
-{
-	BYTE const *bytes;
-	CHAR text[3 * 40 + 1];
-	DWORD available;
-	DWORD i;
-	DWORD offset;
-
-	if (!buffer || length < 0) return;
-	bytes = buffer;
-	available = (DWORD)length + sizeof(DWORD);
-	if (available > 40) available = 40;
-	offset = 0;
-	for (i = 0; i < available; i++) {
-		offset += sprintf(text+offset, i ? " %02X" : "%02X", bytes[i]);
-	}
-	D2GSEventLog("ClassicAdapterTrace", "%s queue returned %d bytes: %s",
-		queue, length, text);
-}
-
-static int __stdcall Classic100RecvGame(void *buffer, int length)
-{
-	int result;
-
-	result = gClassic100RecvGame(buffer, length);
-	if (InterlockedCompareExchange(&gClassic100RecvGameSeen, 1, 0) == 0)
-		D2GSEventLog("ClassicAdapterTrace",
-			"D2Game began polling the D2Net game queue");
-	TraceD2NetPacket("game", buffer, result);
-	return result;
-}
-
-static int __stdcall Classic100RecvControl(void *buffer, int length)
-{
-	int result;
-
-	result = gClassic100RecvControl(buffer, length);
-	if (InterlockedCompareExchange(&gClassic100RecvControlSeen, 1, 0) == 0)
-		D2GSEventLog("ClassicAdapterTrace",
-			"D2Game began polling the D2Net control queue");
-	TraceD2NetPacket("control", buffer, result);
-	return result;
-}
-
-static BOOL PatchImportPointer(HMODULE module, DWORD rva, FARPROC expected,
-		FARPROC replacement, LPCSTR description)
-{
-	FARPROC *slot;
-	DWORD oldProtection;
-	DWORD ignoredProtection;
-
-	slot = (FARPROC *)((BYTE *)module+rva);
-	if (*slot != expected) {
-		D2GSEventLog("ClassicAdapter", "%s target does not match", description);
-		return FALSE;
-	}
-	if (!VirtualProtect(slot, sizeof(*slot), PAGE_READWRITE, &oldProtection)) {
-		D2GSEventLog("ClassicAdapter", "Failed making %s writable. Code: %lu",
-			description, GetLastError());
-		return FALSE;
-	}
-	*slot = replacement;
-	if (!VirtualProtect(slot, sizeof(*slot), oldProtection,
-			&ignoredProtection)) {
-		D2GSEventLog("ClassicAdapter",
-			"Failed restoring %s page protection. Code: %lu",
-			description, GetLastError());
-		return FALSE;
-	}
-	return TRUE;
-}
-
-static BOOL PatchRelativeJump(HMODULE module, DWORD rva, FARPROC expected,
-		FARPROC replacement, LPCSTR description)
-{
-	BYTE *instruction;
-	BYTE replacementBytes[5];
-	DWORD target;
-
-	instruction = (BYTE *)module+rva;
-	if (instruction[0] != 0xE9) {
-		D2GSEventLog("ClassicAdapter", "%s is not a relative jump",
-			description);
-		return FALSE;
-	}
-	target = (DWORD)(instruction+5) + *(DWORD *)(instruction+1);
-	if ((FARPROC)target != expected) {
-		D2GSEventLog("ClassicAdapter", "%s target does not match",
-			description);
-		return FALSE;
-	}
-	replacementBytes[0] = 0xE9;
-	*(DWORD *)(replacementBytes+1) =
-		(DWORD)(BYTE *)replacement - (DWORD)(instruction+5);
-	return PatchBytes(module, rva, replacementBytes,
-		sizeof(replacementBytes), description);
-}
-
-static BOOL PatchClassic100DatabaseReturns(HMODULE d2Game)
+static BOOL PatchClassicDatabaseReturns(HMODULE d2Game,
+		CLASSICEARLYPROFILE const *profile)
 {
 	DWORD i;
 
-	for (i = 0; i < ARRAYSIZE(Classic100DatabaseReturnRvas); i++) {
-		if (!VerifyBytes(d2Game, Classic100DatabaseReturnRvas[i],
-				Classic100DatabaseReturnExpected,
-				sizeof(Classic100DatabaseReturnExpected),
+	for (i = 0; i < profile->databaseReturnCount; i++) {
+		if (!VerifyBytes(d2Game, profile->databaseReturnRvas[i],
+				ClassicDatabaseReturnExpected,
+				sizeof(ClassicDatabaseReturnExpected),
 				"D2Game.dll database-character return")) return FALSE;
 	}
-	for (i = 0; i < ARRAYSIZE(Classic100DatabaseReturnRvas); i++) {
-		if (!PatchBytes(d2Game, Classic100DatabaseReturnRvas[i],
-				Classic100DatabaseReturnReplacement,
-				sizeof(Classic100DatabaseReturnReplacement),
+	for (i = 0; i < profile->databaseReturnCount; i++) {
+		if (!PatchBytes(d2Game, profile->databaseReturnRvas[i],
+				ClassicDatabaseReturnReplacement,
+				sizeof(ClassicDatabaseReturnReplacement),
 				"D2Game.dll database-character return")) return FALSE;
 	}
 	D2GSEventLog("ClassicAdapter",
-		"Adapted classic 1.00 database-character export cleanup");
+		"Adapted classic %s database-character export cleanup",
+		profile->name);
 	return TRUE;
-}
-
-static int __fastcall Classic100Parser(BYTE *data, int length,
-	DWORD arg1, DWORD arg2, DWORD arg3, DWORD arg4, DWORD arg5, DWORD arg6)
-{
-	CHAR text[3 * 16 + 1];
-	DWORD available;
-	DWORD i;
-	DWORD offset;
-	int result;
-
-	available = length > 0 ? (DWORD)length : 0;
-	if (available > 16) available = 16;
-	offset = 0;
-	for (i = 0; i < available; i++)
-		offset += sprintf(text+offset, i ? " %02X" : "%02X", data[i]);
-	result = gClassic100Parser(data, length, arg1, arg2, arg3, arg4, arg5,
-		arg6);
-	D2GSEventLog("ClassicAdapterTrace",
-		"D2Net parser returned %d for %d bytes: %s", result, length,
-		available ? text : "<empty>");
-	return result;
-}
-
-static BOOL PatchClassic100Parser(HMODULE d2Net)
-{
-	static BYTE const expected[] = {0x83, 0xFA, 0x04, 0x53, 0x73, 0x09};
-	BYTE replacement[sizeof(expected)];
-	BYTE *target;
-	BYTE *trampoline;
-
-	target = (BYTE *)d2Net+CLASSIC_100_D2NET_PARSER_RVA;
-	if (memcmp(target, expected, sizeof(expected))) {
-		D2GSEventLog("ClassicAdapter",
-			"D2Net.dll parser prologue bytes do not match");
-		return FALSE;
-	}
-	trampoline = VirtualAlloc(NULL, 15, MEM_COMMIT | MEM_RESERVE,
-		PAGE_EXECUTE_READWRITE);
-	if (!trampoline) {
-		D2GSEventLog("ClassicAdapter",
-			"Failed allocating D2Net parser trampoline. Code: %lu",
-			GetLastError());
-		return FALSE;
-	}
-	memcpy(trampoline, expected, 4);
-	trampoline[4] = 0x0F;
-	trampoline[5] = 0x83;
-	*(DWORD *)(trampoline+6) = (DWORD)(target+15) -
-		(DWORD)(trampoline+10);
-	trampoline[10] = 0xE9;
-	*(DWORD *)(trampoline+11) = (DWORD)(target+6) -
-		(DWORD)(trampoline+15);
-	FlushInstructionCache(GetCurrentProcess(), trampoline, 15);
-	gClassic100Parser = (D2NETPARSERFUNC)trampoline;
-	replacement[0] = 0xE9;
-	*(DWORD *)(replacement+1) = (DWORD)(BYTE *)Classic100Parser -
-		(DWORD)(target+5);
-	replacement[5] = 0x90;
-	return PatchBytes(d2Net, CLASSIC_100_D2NET_PARSER_RVA, replacement,
-		sizeof(replacement), "D2Net.dll parser entry");
-}
-
-static int __fastcall Classic100Accept(DWORD arg1, DWORD arg2)
-{
-	int result;
-
-	result = gClassic100Accept(arg1, arg2);
-	D2GSEventLog("ClassicAdapterTrace",
-		"D2Net accept callback returned %d for client %lu", result, arg2);
-	return result;
-}
-
-static int __fastcall Classic100Deliver(DWORD arg1, DWORD arg2, DWORD arg3)
-{
-	int result;
-
-	result = gClassic100Deliver(arg1, arg2, arg3);
-	D2GSEventLog("ClassicAdapterTrace",
-		"D2Net delivery callback returned %d for client %lu", result, arg2);
-	return result;
 }
 
 static void FormatHash(BYTE const hash[SHA256_LENGTH],
@@ -456,93 +354,82 @@ static void FormatHash(BYTE const hash[SHA256_LENGTH],
 	hashText[SHA256_LENGTH*2] = '\0';
 }
 
+static BOOL VerifyFileSha256(LPCSTR fileName,
+		BYTE const expected[SHA256_LENGTH])
+{
+	BYTE actual[SHA256_LENGTH];
+	CHAR hashText[(SHA256_LENGTH * 2) + 1];
+
+	if (!HashFileSha256(fileName, actual)) {
+		D2GSEventLog("ClassicAdapter", "Failed hashing %s", fileName);
+		return FALSE;
+	}
+	if (!memcmp(actual, expected, sizeof(actual))) return TRUE;
+	FormatHash(actual, hashText);
+	D2GSEventLog("ClassicAdapter", "%s SHA-256 is unsupported: %s",
+		fileName, hashText);
+	return FALSE;
+}
+
 extern BOOL ClassicAdapterApply(D2GSCALLBACKABI *callbackAbi)
 {
 	BYTE d2GameHash[SHA256_LENGTH];
-	BYTE d2ClientHash[SHA256_LENGTH];
-	BYTE d2CommonHash[SHA256_LENGTH];
-	BYTE d2WinHash[SHA256_LENGTH];
-	BYTE fogHash[SHA256_LENGTH];
 	CHAR hashText[(SHA256_LENGTH * 2) + 1];
+	CLASSICEARLYPROFILE const *profile;
 	HMODULE d2server;
 	HMODULE fog;
-	BOOL is100;
 
 	if (!callbackAbi) return FALSE;
-	gClassic100Active = FALSE;
+	gClassicEarlyProfile = NULL;
+	profile = NULL;
 	fog = NULL;
-	if (!HashFileSha256("d2server.dll", fogHash) ||
-			memcmp(fogHash, D2ServerSha256, sizeof(fogHash))) {
-		D2GSEventLog("ClassicAdapter",
-			"d2server.dll does not match the supported build output");
-		return FALSE;
-	}
+	if (!VerifyFileSha256("d2server.dll", D2ServerSha256)) return FALSE;
 	if (!HashFileSha256("D2Game.dll", d2GameHash)) {
 		D2GSEventLog("ClassicAdapter", "Failed hashing D2Game.dll");
 		return FALSE;
 	}
-	is100 = !memcmp(d2GameHash, Classic100D2GameSha256, sizeof(d2GameHash));
-	if (!is100 && memcmp(d2GameHash, Classic109D2GameSha256, sizeof(d2GameHash))) {
+	if (!memcmp(d2GameHash, Classic100Profile.d2GameSha256,
+			sizeof(d2GameHash)))
+		profile = &Classic100Profile;
+	else if (!memcmp(d2GameHash, Classic101Profile.d2GameSha256,
+			sizeof(d2GameHash)))
+		profile = &Classic101Profile;
+	else if (memcmp(d2GameHash, Classic109D2GameSha256,
+			sizeof(d2GameHash))) {
 		FormatHash(d2GameHash, hashText);
 		D2GSEventLog("ClassicAdapter",
 			"D2Game.dll SHA-256 is unsupported: %s", hashText);
 		return FALSE;
 	}
-	if (is100) {
-		if (!IsEnabled("D2GS_EXPERIMENTAL_CLASSIC_100")) {
+	if (profile) {
+		if (!IsEnabled(profile->enableVariable)) {
 			D2GSEventLog("ClassicAdapter",
-				"Classic 1.00 runtime detected; set D2GS_EXPERIMENTAL_CLASSIC_100=1 to enable its experimental profile");
+				"Classic %s runtime detected; set %s=1 to enable its experimental profile",
+				profile->name, profile->enableVariable);
 			return FALSE;
 		}
-		if (!HashFileSha256("D2Client.dll", d2ClientHash)) {
-			D2GSEventLog("ClassicAdapter", "Failed hashing D2Client.dll");
-			return FALSE;
-		}
-		if (memcmp(d2ClientHash, Classic100D2ClientSha256,
-				sizeof(d2ClientHash))) {
-			FormatHash(d2ClientHash, hashText);
-			D2GSEventLog("ClassicAdapter",
-				"D2Client.dll SHA-256 is unsupported: %s", hashText);
-			return FALSE;
-		}
-		if (!HashFileSha256("D2Common.dll", d2CommonHash)) {
-			D2GSEventLog("ClassicAdapter", "Failed hashing D2Common.dll");
-			return FALSE;
-		}
-		if (memcmp(d2CommonHash, Classic100D2CommonSha256,
-				sizeof(d2CommonHash))) {
-			FormatHash(d2CommonHash, hashText);
-			D2GSEventLog("ClassicAdapter",
-				"D2Common.dll SHA-256 is unsupported: %s", hashText);
-			return FALSE;
-		}
-		if (!HashFileSha256("D2Win.dll", d2WinHash)) {
-			D2GSEventLog("ClassicAdapter", "Failed hashing D2Win.dll");
-			return FALSE;
-		}
-		if (memcmp(d2WinHash, Classic100D2WinSha256, sizeof(d2WinHash))) {
-			FormatHash(d2WinHash, hashText);
-			D2GSEventLog("ClassicAdapter",
-				"D2Win.dll SHA-256 is unsupported: %s", hashText);
-			return FALSE;
+		if (!VerifyFileSha256("D2Client.dll", profile->d2ClientSha256) ||
+				!VerifyFileSha256("D2Common.dll", profile->d2CommonSha256) ||
+				!VerifyFileSha256("D2Net.dll", profile->d2NetSha256) ||
+				!VerifyFileSha256("D2Win.dll", profile->d2WinSha256) ||
+				!VerifyFileSha256("Fog.dll", profile->fogSha256)) return FALSE;
+		if (profile == &Classic101Profile) {
+			fog = LoadLibraryA("Fog.dll");
+			if (!fog) {
+				D2GSEventLog("ClassicAdapter",
+					"Failed loading Fog.dll. Code: %lu", GetLastError());
+				return FALSE;
+			}
+			if (!VerifyBytes(fog, CLASSIC_101_FOG_PREINIT_DIAGNOSTIC_RVA,
+					Classic101FogPreinitDiagnosticExpected,
+					sizeof(Classic101FogPreinitDiagnosticExpected),
+					"Fog.dll pre-initialization diagnostic call")) return FALSE;
 		}
 	} else if (!IsEnabled("D2GS_EXPERIMENTAL_CLASSIC_109")) {
 		D2GSEventLog("ClassicAdapter",
 			"Classic 1.09 runtime detected; set D2GS_EXPERIMENTAL_CLASSIC_109=1 to enable its experimental profile");
 		return FALSE;
-	}
-
-	if (!HashFileSha256("Fog.dll", fogHash)) {
-		D2GSEventLog("ClassicAdapter", "Failed hashing Fog.dll");
-		return FALSE;
-	}
-	if (memcmp(fogHash, is100 ? Classic100FogSha256 : Classic109FogSha256,
-			sizeof(fogHash))) {
-		FormatHash(fogHash, hashText);
-		D2GSEventLog("ClassicAdapter", "Fog.dll SHA-256 is unsupported: %s",
-			hashText);
-		return FALSE;
-	}
+	} else if (!VerifyFileSha256("Fog.dll", Classic109FogSha256)) return FALSE;
 
 	d2server = GetModuleHandleA("d2server.dll");
 	if (!d2server) {
@@ -552,7 +439,7 @@ extern BOOL ClassicAdapterApply(D2GSCALLBACKABI *callbackAbi)
 	if (!VerifyBytes(d2server, CLASSIC_D2SERVER_LANGUAGE_PATCH_RVA,
 			D2ServerLanguageExpected, sizeof(D2ServerLanguageExpected),
 			"d2server.dll language-mode call")) return FALSE;
-	if (is100) {
+	if (profile) {
 		if (!VerifyBytes(d2server, CLASSIC_100_D2WIN_MPQ_ORDINAL_RVA,
 				D2WinOrdinal10037, sizeof(D2WinOrdinal10037),
 				"d2server.dll D2Win MPQ ordinal") ||
@@ -610,7 +497,12 @@ extern BOOL ClassicAdapterApply(D2GSCALLBACKABI *callbackAbi)
 	if (!PatchBytes(d2server, CLASSIC_D2SERVER_LANGUAGE_PATCH_RVA,
 			D2ServerLanguageReplacement, sizeof(D2ServerLanguageReplacement),
 			"d2server.dll language-mode call")) return FALSE;
-	if (is100) {
+	if (profile) {
+		if (profile == &Classic101Profile &&
+				!PatchBytes(fog, CLASSIC_101_FOG_PREINIT_DIAGNOSTIC_RVA,
+					Classic101FogPreinitDiagnosticReplacement,
+					sizeof(Classic101FogPreinitDiagnosticReplacement),
+					"Fog.dll pre-initialization diagnostic call")) return FALSE;
 		if (!PatchBytes(d2server, CLASSIC_100_D2WIN_MPQ_ORDINAL_RVA,
 				D2WinOrdinal10033, sizeof(D2WinOrdinal10033),
 				"d2server.dll D2Win MPQ ordinal") ||
@@ -648,15 +540,16 @@ extern BOOL ClassicAdapterApply(D2GSCALLBACKABI *callbackAbi)
 				InitEventCanonicalPointer, sizeof(InitEventCanonicalPointer),
 				"d2server.dll initialization event pointer") ||
 			!PatchBytes(d2server, CLASSIC_100_CLIENT_DESCRIPTOR_RVA,
-				Classic100ClientDescriptor, sizeof(Classic100ClientDescriptor),
+				profile->clientDescriptor, sizeof(ClientDescriptorExpected),
 				"d2server.dll client-singleton descriptor RVA") ||
 			!PatchBytes(d2server, CLASSIC_100_CLIENT_EXPECTED_RVA,
-				Classic100ClientPointer, sizeof(Classic100ClientPointer),
+				profile->clientPointer, sizeof(ClientPointerExpected),
 				"d2server.dll client-singleton descriptor bytes")) return FALSE;
-		*callbackAbi = D2GS_CALLBACK_ABI_100;
-		gClassic100Active = TRUE;
+		*callbackAbi = profile->callbackAbi;
+		gClassicEarlyProfile = profile;
 		D2GSEventLog("ClassicAdapter",
-			"Applied the hash-gated classic 1.00 host and callback profile");
+			"Applied the hash-gated classic %s host and callback profile",
+			profile->name);
 	} else {
 		if (!PatchBytes(fog, CLASSIC_FOG_PATCH_RVA, Classic109FogReplacement,
 				sizeof(Classic109FogReplacement),
@@ -668,49 +561,16 @@ extern BOOL ClassicAdapterApply(D2GSCALLBACKABI *callbackAbi)
 	return TRUE;
 }
 
-extern void ClassicAdapterTraceNetwork(void)
+extern BOOL ClassicAdapterFinalize(void)
 {
 	HMODULE d2Game;
-	HMODULE d2Net;
-	FARPROC recvGame;
-	FARPROC recvControl;
 
-	if (!gClassic100Active) return;
+	if (!gClassicEarlyProfile) return TRUE;
 	d2Game = GetModuleHandleA("D2Game.dll");
-	d2Net = GetModuleHandleA("D2Net.dll");
-	if (!d2Game || !d2Net) {
-		D2GSEventLog("ClassicAdapterTrace",
-			"D2Game.dll or D2Net.dll is not loaded after initialization");
-		return;
+	if (!d2Game) {
+		D2GSEventLog("ClassicAdapter",
+			"D2Game.dll is not loaded after initialization");
+		return FALSE;
 	}
-	if (!PatchClassic100DatabaseReturns(d2Game)) return;
-	recvGame = GetProcAddress(d2Net, MAKEINTRESOURCEA(10010));
-	recvControl = GetProcAddress(d2Net, MAKEINTRESOURCEA(10011));
-	if (!recvGame || !recvControl) {
-		D2GSEventLog("ClassicAdapterTrace",
-			"D2Net.dll receive exports are unavailable");
-		return;
-	}
-	gClassic100RecvGame = (D2NETRECVFUNC)recvGame;
-	gClassic100RecvControl = (D2NETRECVFUNC)recvControl;
-	gClassic100Accept = (D2NETACCEPTFUNC)((BYTE *)d2Net+
-		CLASSIC_100_D2NET_ACCEPT_RVA);
-	gClassic100Deliver = (D2NETDELIVERFUNC)((BYTE *)d2Net+
-		CLASSIC_100_D2NET_DELIVER_RVA);
-	if (!PatchImportPointer(d2Game, CLASSIC_100_D2GAME_RECV_GAME_IAT_RVA,
-			recvGame, (FARPROC)Classic100RecvGame,
-			"D2Game.dll game receive import") ||
-			!PatchImportPointer(d2Game,
-				CLASSIC_100_D2GAME_RECV_CONTROL_IAT_RVA, recvControl,
-				(FARPROC)Classic100RecvControl,
-				"D2Game.dll control receive import") ||
-			!PatchClassic100Parser(d2Net) ||
-			!PatchRelativeJump(d2Net, CLASSIC_100_D2NET_ACCEPT_THUNK_RVA,
-				(FARPROC)gClassic100Accept, (FARPROC)Classic100Accept,
-				"D2Net.dll accept callback thunk") ||
-			!PatchRelativeJump(d2Net, CLASSIC_100_D2NET_DELIVER_THUNK_RVA,
-				(FARPROC)gClassic100Deliver, (FARPROC)Classic100Deliver,
-				"D2Net.dll delivery callback thunk")) return;
-	D2GSEventLog("ClassicAdapterTrace",
-		"Installed classic 1.00 D2Net receive tracing");
+	return PatchClassicDatabaseReturns(d2Game, gClassicEarlyProfile);
 }

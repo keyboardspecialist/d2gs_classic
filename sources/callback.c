@@ -272,13 +272,15 @@ extern void __fastcall LoadComplete(WORD wGameId, LPCSTR lpCharName, BOOL bExpan
 extern PEVENTCALLBACKTABLE EventCallbackTableInit(D2GSCALLBACKABI callbackAbi)
 {
 	gEventCallbackTable.fpCloseGame=CloseGame;
-	if (callbackAbi == D2GS_CALLBACK_ABI_100)
+	if (callbackAbi == D2GS_CALLBACK_ABI_100 ||
+			callbackAbi == D2GS_CALLBACK_ABI_101)
 		gEventCallbackTable.fpLeaveGame=LeaveGame100;
 	else if (callbackAbi == D2GS_CALLBACK_ABI_109B)
 		gEventCallbackTable.fpLeaveGame=LeaveGame109b;
 	else
 		gEventCallbackTable.fpLeaveGame=LeaveGame;
-	if (callbackAbi == D2GS_CALLBACK_ABI_100) {
+	if (callbackAbi == D2GS_CALLBACK_ABI_100 ||
+			callbackAbi == D2GS_CALLBACK_ABI_101) {
 		gEventCallbackTable.fpGetDatabaseCharacter=GetDatabaseCharacter100;
 		gEventCallbackTable.fpSaveDatabaseCharacter=SaveDatabaseCharacter100;
 	} else {
@@ -288,19 +290,22 @@ extern PEVENTCALLBACKTABLE EventCallbackTableInit(D2GSCALLBACKABI callbackAbi)
 	gEventCallbackTable.fpServerLogMessage=ServerLogMessage;
 	gEventCallbackTable.fpEnterGame=EnterGame;
 	gEventCallbackTable.fpFindPlayerToken=FindPlayerToken;
-	if (callbackAbi == D2GS_CALLBACK_ABI_100)
+	if (callbackAbi == D2GS_CALLBACK_ABI_100 ||
+			callbackAbi == D2GS_CALLBACK_ABI_101)
 		gEventCallbackTable.fpUnlockDatabaseCharacter=UnlockDatabaseCharacter100;
 	else
 		gEventCallbackTable.fpUnlockDatabaseCharacter=UnlockDatabaseCharacter;
 	gEventCallbackTable.fpRelockDatabaseCharacter=RelockDatabaseCharacter;
-	if (callbackAbi == D2GS_CALLBACK_ABI_100)
+	if (callbackAbi == D2GS_CALLBACK_ABI_100 ||
+			callbackAbi == D2GS_CALLBACK_ABI_101)
 		gEventCallbackTable.fpUpdateCharacterLadder=UpdateCharacterLadder100;
 	else
 		gEventCallbackTable.fpUpdateCharacterLadder=UpdateCharacterLadder;
 	gEventCallbackTable.fpUpdateGameInformation=UpdateGameInformation;
 	gEventCallbackTable.fpSetGameData=SetGameData;
 	gEventCallbackTable.fpReserved1=ReservedCallback1;
-	if (callbackAbi == D2GS_CALLBACK_ABI_109B)
+	if (callbackAbi == D2GS_CALLBACK_ABI_109B ||
+			callbackAbi == D2GS_CALLBACK_ABI_101)
 		gEventCallbackTable.fpReserved2=ReservedCallback2_109b;
 	else
 		gEventCallbackTable.fpReserved2=ReservedCallback2;
