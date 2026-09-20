@@ -75,6 +75,25 @@ static void __fastcall LeaveGame100(WORD wGameId, WORD wCharClass,
 }
 
 
+static void __fastcall LeaveGame104(LPGAMEDATA lpGameData, WORD wGameId,
+				WORD wCharClass, DWORD dwCharLevel, DWORD dwExpLow,
+				DWORD dwExpHigh, WORD wCharStatus, LPCSTR lpCharName,
+				LPCSTR lpCharPortrait, PLAYERDATA PlayerData)
+{
+	CHAR accountName[MAX_ACCTNAME_LEN];
+
+	ZeroMemory(accountName, sizeof(accountName));
+	D2GSGetAccountName(lpCharName, accountName, sizeof(accountName));
+	DebugEventCallback("LeaveGame104", 10, _D(lpGameData), _D(wGameId),
+			_D(wCharClass), _D(dwCharLevel), _D(dwExpLow), _D(dwExpHigh),
+			_D(wCharStatus), _D(lpCharName), _D(lpCharPortrait), _D(PlayerData));
+	D2GSCBLeaveGame(lpGameData, wGameId, wCharClass, dwCharLevel, dwExpLow,
+		dwExpHigh, wCharStatus, lpCharName, lpCharPortrait, TRUE,
+		0, 0, accountName, PlayerData, 0);
+	return;
+}
+
+
 extern void __fastcall GetDatabaseCharacter(LPGAMEDATA lpGameData, LPCSTR lpCharName,
 						DWORD dwClientId, LPCSTR lpAccountName)
 {
@@ -95,6 +114,20 @@ static void __fastcall GetDatabaseCharacter100(LPCSTR lpCharName, DWORD dwClient
 	DebugEventCallback("GetDatabaseCharacter100", 2, _D(lpCharName),
 		_D(dwClientId));
 	D2GSCBGetDatabaseCharacter(0, lpCharName, dwClientId, accountName);
+	return;
+}
+
+
+static void __fastcall GetDatabaseCharacter104(LPGAMEDATA lpGameData,
+				LPCSTR lpCharName, DWORD dwClientId)
+{
+	CHAR accountName[MAX_ACCTNAME_LEN];
+
+	ZeroMemory(accountName, sizeof(accountName));
+	D2GSGetAccountName(lpCharName, accountName, sizeof(accountName));
+	DebugEventCallback("GetDatabaseCharacter104", 3, _D(lpGameData),
+		_D(lpCharName), _D(dwClientId));
+	D2GSCBGetDatabaseCharacter(lpGameData, lpCharName, dwClientId, accountName);
 	return;
 }
 
@@ -169,6 +202,20 @@ static void __fastcall UnlockDatabaseCharacter100(LPCSTR lpCharName,
 	DebugEventCallback("UnlockDatabaseCharacter100", 2, _D(lpCharName),
 		_D(lpAccountName));
 	D2GSUnlockChar(lpAccountName, lpCharName);
+	return;
+}
+
+
+static void __fastcall UnlockDatabaseCharacter104(LPGAMEDATA lpGameData,
+				LPCSTR lpCharName)
+{
+	CHAR accountName[MAX_ACCTNAME_LEN];
+
+	ZeroMemory(accountName, sizeof(accountName));
+	D2GSGetAccountName(lpCharName, accountName, sizeof(accountName));
+	DebugEventCallback("UnlockDatabaseCharacter104", 2, _D(lpGameData),
+		_D(lpCharName));
+	D2GSUnlockChar(accountName, lpCharName);
 	return;
 }
 
@@ -275,6 +322,8 @@ extern PEVENTCALLBACKTABLE EventCallbackTableInit(D2GSCALLBACKABI callbackAbi)
 	if (callbackAbi == D2GS_CALLBACK_ABI_100 ||
 			callbackAbi == D2GS_CALLBACK_ABI_101)
 		gEventCallbackTable.fpLeaveGame=LeaveGame100;
+	else if (callbackAbi == D2GS_CALLBACK_ABI_104)
+		gEventCallbackTable.fpLeaveGame=LeaveGame104;
 	else if (callbackAbi == D2GS_CALLBACK_ABI_109B)
 		gEventCallbackTable.fpLeaveGame=LeaveGame109b;
 	else
@@ -284,7 +333,10 @@ extern PEVENTCALLBACKTABLE EventCallbackTableInit(D2GSCALLBACKABI callbackAbi)
 		gEventCallbackTable.fpGetDatabaseCharacter=GetDatabaseCharacter100;
 		gEventCallbackTable.fpSaveDatabaseCharacter=SaveDatabaseCharacter100;
 	} else {
-		gEventCallbackTable.fpGetDatabaseCharacter=GetDatabaseCharacter;
+		if (callbackAbi == D2GS_CALLBACK_ABI_104)
+			gEventCallbackTable.fpGetDatabaseCharacter=GetDatabaseCharacter104;
+		else
+			gEventCallbackTable.fpGetDatabaseCharacter=GetDatabaseCharacter;
 		gEventCallbackTable.fpSaveDatabaseCharacter=SaveDatabaseCharacter;
 	}
 	gEventCallbackTable.fpServerLogMessage=ServerLogMessage;
@@ -293,11 +345,14 @@ extern PEVENTCALLBACKTABLE EventCallbackTableInit(D2GSCALLBACKABI callbackAbi)
 	if (callbackAbi == D2GS_CALLBACK_ABI_100 ||
 			callbackAbi == D2GS_CALLBACK_ABI_101)
 		gEventCallbackTable.fpUnlockDatabaseCharacter=UnlockDatabaseCharacter100;
+	else if (callbackAbi == D2GS_CALLBACK_ABI_104)
+		gEventCallbackTable.fpUnlockDatabaseCharacter=UnlockDatabaseCharacter104;
 	else
 		gEventCallbackTable.fpUnlockDatabaseCharacter=UnlockDatabaseCharacter;
 	gEventCallbackTable.fpRelockDatabaseCharacter=RelockDatabaseCharacter;
 	if (callbackAbi == D2GS_CALLBACK_ABI_100 ||
-			callbackAbi == D2GS_CALLBACK_ABI_101)
+			callbackAbi == D2GS_CALLBACK_ABI_101 ||
+			callbackAbi == D2GS_CALLBACK_ABI_104)
 		gEventCallbackTable.fpUpdateCharacterLadder=UpdateCharacterLadder100;
 	else
 		gEventCallbackTable.fpUpdateCharacterLadder=UpdateCharacterLadder;

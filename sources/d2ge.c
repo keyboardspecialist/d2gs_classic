@@ -135,7 +135,8 @@ int D2GEThreadInit(void)
 	gD2GSInfo.dwLibVersion			= D2GS_LIBRARY_VERSION;
 	gD2GSInfo.bIsNT					= d2gsconf.enablentmode;
 	if ((gCallbackAbi == D2GS_CALLBACK_ABI_100 ||
-			gCallbackAbi == D2GS_CALLBACK_ABI_101) && gD2GSInfo.bIsNT) {
+			gCallbackAbi == D2GS_CALLBACK_ABI_101 ||
+			gCallbackAbi == D2GS_CALLBACK_ABI_104) && gD2GSInfo.bIsNT) {
 		gD2GSInfo.bIsNT = FALSE;
 		D2GSEventLog("D2GEThreadInit",
 			"Disabling NT network mode for early classic compatibility");
