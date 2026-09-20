@@ -22,6 +22,7 @@
 #define CLASSIC_100_CLIENT_DESCRIPTOR_RVA 0x2AB4
 #define CLASSIC_100_CLIENT_EXPECTED_RVA 0x3194
 #define CLASSIC_101_FOG_PREINIT_DIAGNOSTIC_RVA 0xD2D2
+#define CLASSIC_102_FOG_PREINIT_DIAGNOSTIC_RVA 0xE128
 #define SHA256_LENGTH 32
 
 typedef struct {
@@ -33,6 +34,8 @@ typedef struct {
 	BYTE const *d2NetSha256;
 	BYTE const *d2WinSha256;
 	BYTE const *fogSha256;
+	DWORD fogPreinitDiagnosticRva;
+	BYTE const *fogPreinitDiagnosticExpected;
 	BYTE const *clientDescriptor;
 	BYTE const *clientPointer;
 	DWORD const *databaseReturnRvas;
@@ -150,8 +153,53 @@ static BYTE const Classic101D2WinSha256[SHA256_LENGTH] = {
 	0xBF, 0x24, 0x04, 0x15, 0xA9, 0x97, 0x79, 0x0D
 };
 
+static BYTE const Classic102FogSha256[SHA256_LENGTH] = {
+	0x58, 0x99, 0x41, 0x0C, 0x9E, 0x4C, 0x3D, 0xE5,
+	0x61, 0xB5, 0x07, 0xC4, 0x37, 0xCA, 0xE4, 0x04,
+	0x94, 0x68, 0x32, 0x94, 0xA7, 0x0C, 0x21, 0x8E,
+	0x75, 0xF3, 0xF3, 0xAF, 0xC3, 0x11, 0x59, 0xA7
+};
+
+static BYTE const Classic102D2GameSha256[SHA256_LENGTH] = {
+	0x78, 0x3F, 0xF9, 0xBF, 0x1C, 0x1E, 0xAD, 0xB4,
+	0x03, 0x62, 0xF8, 0x1D, 0x43, 0xD1, 0xFF, 0xAE,
+	0x7D, 0x3B, 0xDA, 0x7F, 0x47, 0xFC, 0x9B, 0x2E,
+	0x2D, 0xB4, 0xA3, 0xE2, 0x3A, 0x44, 0xF1, 0xBF
+};
+
+static BYTE const Classic102D2ClientSha256[SHA256_LENGTH] = {
+	0xF4, 0xCC, 0x81, 0x6C, 0x9C, 0x86, 0x3F, 0x77,
+	0xA5, 0x29, 0xB1, 0x93, 0x66, 0x62, 0x3A, 0x2F,
+	0x6D, 0xD9, 0x98, 0x15, 0x98, 0xC7, 0xC3, 0xE6,
+	0x13, 0x66, 0x50, 0x9E, 0x44, 0xDC, 0xD6, 0xB9
+};
+
+static BYTE const Classic102D2CommonSha256[SHA256_LENGTH] = {
+	0xB0, 0x8B, 0x18, 0x5D, 0xF8, 0xB9, 0x53, 0x95,
+	0xA2, 0x14, 0xCA, 0xC2, 0xFC, 0x64, 0xAA, 0x3A,
+	0x87, 0x58, 0x53, 0x5E, 0xA2, 0x25, 0x01, 0xD8,
+	0xCF, 0xE7, 0xC4, 0xFC, 0x44, 0xDC, 0x5B, 0x9E
+};
+
+static BYTE const Classic102D2NetSha256[SHA256_LENGTH] = {
+	0x61, 0x98, 0xAE, 0xE4, 0x89, 0x0A, 0xFE, 0x88,
+	0x72, 0x21, 0x9A, 0xA6, 0x7B, 0xD4, 0x2D, 0xE8,
+	0x39, 0xCB, 0x43, 0x06, 0x7E, 0x8A, 0x97, 0x05,
+	0xEF, 0x67, 0x1A, 0x8E, 0xC2, 0x28, 0x05, 0xC9
+};
+
+static BYTE const Classic102D2WinSha256[SHA256_LENGTH] = {
+	0x5A, 0x6C, 0x4A, 0x00, 0xCD, 0x12, 0xAC, 0x27,
+	0x3E, 0xA0, 0xBE, 0xA9, 0x16, 0xA2, 0x09, 0x08,
+	0xB6, 0xB7, 0xFF, 0x60, 0xC6, 0x93, 0x6E, 0xE1,
+	0x78, 0x3F, 0x58, 0x86, 0x9B, 0x9E, 0x61, 0x89
+};
+
 static BYTE const Classic101FogPreinitDiagnosticExpected[] = {
 	0xE8, 0x63, 0x3F, 0xFF, 0xFF
+};
+static BYTE const Classic102FogPreinitDiagnosticExpected[] = {
+	0xE8, 0x1C, 0x31, 0xFF, 0xFF
 };
 static BYTE const Classic101FogPreinitDiagnosticReplacement[] = {
 	0x90, 0x90, 0x90, 0x90, 0x90
@@ -202,11 +250,16 @@ static BYTE const Classic101ClientDescriptor[] = {0xDC, 0x5B, 0x01, 0x00};
 static BYTE const ClientPointerExpected[] = {0x88, 0x0A, 0xBB, 0x6F};
 static BYTE const Classic100ClientPointer[] = {0xA8, 0xEC, 0x12, 0x10};
 static BYTE const Classic101ClientPointer[] = {0xD0, 0xEA, 0x12, 0x10};
+static BYTE const Classic102ClientDescriptor[] = {0x0C, 0x55, 0x01, 0x00};
+static BYTE const Classic102ClientPointer[] = {0x30, 0xEA, 0x12, 0x10};
 static DWORD const Classic100DatabaseReturnRvas[] = {
 	0x5710, 0x57A2, 0x57E2, 0x5819, 0x584F, 0x58A7
 };
 static DWORD const Classic101DatabaseReturnRvas[] = {
 	0x5790, 0x5822, 0x5862, 0x5899, 0x5924
+};
+static DWORD const Classic102DatabaseReturnRvas[] = {
+	0x57F4, 0x5881, 0x58C1, 0x58F8, 0x5998
 };
 static BYTE const ClassicDatabaseReturnExpected[] = {0xC2, 0x14, 0x00};
 static BYTE const ClassicDatabaseReturnReplacement[] = {0xC2, 0x1C, 0x00};
@@ -215,6 +268,7 @@ static CLASSICEARLYPROFILE const Classic100Profile = {
 	Classic100D2GameSha256, Classic100D2ClientSha256,
 	Classic100D2CommonSha256, Classic100D2NetSha256,
 	Classic100D2WinSha256, Classic100FogSha256,
+	0, NULL,
 	Classic100ClientDescriptor, Classic100ClientPointer,
 	Classic100DatabaseReturnRvas, ARRAYSIZE(Classic100DatabaseReturnRvas),
 	D2GS_CALLBACK_ABI_100
@@ -225,8 +279,22 @@ static CLASSICEARLYPROFILE const Classic101Profile = {
 	Classic101D2GameSha256, Classic101D2ClientSha256,
 	Classic101D2CommonSha256, Classic101D2NetSha256,
 	Classic101D2WinSha256, Classic101FogSha256,
+	CLASSIC_101_FOG_PREINIT_DIAGNOSTIC_RVA,
+	Classic101FogPreinitDiagnosticExpected,
 	Classic101ClientDescriptor, Classic101ClientPointer,
 	Classic101DatabaseReturnRvas, ARRAYSIZE(Classic101DatabaseReturnRvas),
+	D2GS_CALLBACK_ABI_101
+};
+
+static CLASSICEARLYPROFILE const Classic102Profile = {
+	"1.02", "D2GS_EXPERIMENTAL_CLASSIC_102",
+	Classic102D2GameSha256, Classic102D2ClientSha256,
+	Classic102D2CommonSha256, Classic102D2NetSha256,
+	Classic102D2WinSha256, Classic102FogSha256,
+	CLASSIC_102_FOG_PREINIT_DIAGNOSTIC_RVA,
+	Classic102FogPreinitDiagnosticExpected,
+	Classic102ClientDescriptor, Classic102ClientPointer,
+	Classic102DatabaseReturnRvas, ARRAYSIZE(Classic102DatabaseReturnRvas),
 	D2GS_CALLBACK_ABI_101
 };
 
@@ -394,6 +462,9 @@ extern BOOL ClassicAdapterApply(D2GSCALLBACKABI *callbackAbi)
 	else if (!memcmp(d2GameHash, Classic101Profile.d2GameSha256,
 			sizeof(d2GameHash)))
 		profile = &Classic101Profile;
+	else if (!memcmp(d2GameHash, Classic102Profile.d2GameSha256,
+			sizeof(d2GameHash)))
+		profile = &Classic102Profile;
 	else if (memcmp(d2GameHash, Classic109D2GameSha256,
 			sizeof(d2GameHash))) {
 		FormatHash(d2GameHash, hashText);
@@ -413,16 +484,16 @@ extern BOOL ClassicAdapterApply(D2GSCALLBACKABI *callbackAbi)
 				!VerifyFileSha256("D2Net.dll", profile->d2NetSha256) ||
 				!VerifyFileSha256("D2Win.dll", profile->d2WinSha256) ||
 				!VerifyFileSha256("Fog.dll", profile->fogSha256)) return FALSE;
-		if (profile == &Classic101Profile) {
+		if (profile->fogPreinitDiagnosticExpected) {
 			fog = LoadLibraryA("Fog.dll");
 			if (!fog) {
 				D2GSEventLog("ClassicAdapter",
 					"Failed loading Fog.dll. Code: %lu", GetLastError());
 				return FALSE;
 			}
-			if (!VerifyBytes(fog, CLASSIC_101_FOG_PREINIT_DIAGNOSTIC_RVA,
-					Classic101FogPreinitDiagnosticExpected,
-					sizeof(Classic101FogPreinitDiagnosticExpected),
+			if (!VerifyBytes(fog, profile->fogPreinitDiagnosticRva,
+					profile->fogPreinitDiagnosticExpected,
+					sizeof(Classic101FogPreinitDiagnosticReplacement),
 					"Fog.dll pre-initialization diagnostic call")) return FALSE;
 		}
 	} else if (!IsEnabled("D2GS_EXPERIMENTAL_CLASSIC_109")) {
@@ -498,8 +569,8 @@ extern BOOL ClassicAdapterApply(D2GSCALLBACKABI *callbackAbi)
 			D2ServerLanguageReplacement, sizeof(D2ServerLanguageReplacement),
 			"d2server.dll language-mode call")) return FALSE;
 	if (profile) {
-		if (profile == &Classic101Profile &&
-				!PatchBytes(fog, CLASSIC_101_FOG_PREINIT_DIAGNOSTIC_RVA,
+		if (profile->fogPreinitDiagnosticExpected &&
+				!PatchBytes(fog, profile->fogPreinitDiagnosticRva,
 					Classic101FogPreinitDiagnosticReplacement,
 					sizeof(Classic101FogPreinitDiagnosticReplacement),
 					"Fog.dll pre-initialization diagnostic call")) return FALSE;
